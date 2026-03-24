@@ -14,6 +14,11 @@ from .engine.designer import generate_furniture_spec
 from .engine.cut_optimizer import optimize_cuts as _optimize_cuts
 from .engine.structural_validator import validate_structure as _validate
 from .engine.bom_generator import generate_bom as _generate_bom
+from .engine.freecad_scripts import (
+    spec_to_freecad_script,
+    exploded_view_script,
+    cut_layout_script,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -403,6 +408,91 @@ def get_assembly_steps(ctx: Context, spec: dict) -> list[TextContent]:
     except Exception as e:
         logger.exception("get_assembly_steps failed")
         return [TextContent(type="text", text=f"Error generating assembly steps: {e}")]
+
+
+# ---------------------------------------------------------------------------
+# FreeCAD bridge tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def build_3d_model(
+    ctx: Context,
+    spec: dict,
+    doc_name: str = "Furniture",
+) -> list[TextContent]:
+    """Generate a FreeCAD Python script that builds the furniture as a 3D model.
+
+    The returned script creates Part::Box objects for each panel, positioned
+    and color-coded by role. Execute it via freecad-mcp's execute_code tool.
+
+    Args:
+        spec: A furniture spec as returned by design_furniture.
+        doc_name: Name for the FreeCAD document (default: "Furniture").
+
+    Returns:
+        Python code to execute in FreeCAD.
+    """
+    try:
+        code = spec_to_freecad_script(spec, doc_name=doc_name)
+        return [TextContent(type="text", text=code)]
+    except Exception as e:
+        logger.exception("build_3d_model failed")
+        return [TextContent(type="text", text=f"Error generating 3D model script: {e}")]
+
+
+@mcp.tool()
+def build_exploded_view(
+    ctx: Context,
+    spec: dict,
+    gap_mm: float = 50,
+    doc_name: str = "Exploded",
+) -> list[TextContent]:
+    """Generate a FreeCAD Python script for an exploded assembly view.
+
+    Panels are separated along their assembly axis to visualize how the
+    furniture comes together. Execute it via freecad-mcp's execute_code tool.
+
+    Args:
+        spec: A furniture spec as returned by design_furniture.
+        gap_mm: Gap between exploded parts in mm (default: 50).
+        doc_name: Name for the FreeCAD document (default: "Exploded").
+
+    Returns:
+        Python code to execute in FreeCAD.
+    """
+    try:
+        code = exploded_view_script(spec, gap_mm=gap_mm, doc_name=doc_name)
+        return [TextContent(type="text", text=code)]
+    except Exception as e:
+        logger.exception("build_exploded_view failed")
+        return [TextContent(type="text", text=f"Error generating exploded view script: {e}")]
+
+
+@mcp.tool()
+def build_cut_diagram(
+    ctx: Context,
+    cut_result: dict,
+    doc_name: str = "CutLayout",
+) -> list[TextContent]:
+    """Generate a FreeCAD Python script that visualizes the cut optimization layout.
+
+    Creates a top-down view of each sheet with pieces placed according to the
+    cut optimizer output. Execute it via freecad-mcp's execute_code tool.
+
+    Args:
+        cut_result: Result from optimize_cuts tool.
+        doc_name: Name for the FreeCAD document (default: "CutLayout").
+
+    Returns:
+        Python code to execute in FreeCAD.
+    """
+    try:
+        code = cut_layout_script(cut_result, doc_name=doc_name)
+        return [TextContent(type="text", text=code)]
+    except Exception as e:
+        logger.exception("build_cut_diagram failed")
+        return [TextContent(type="text", text=f"Error generating cut diagram script: {e}")]
 
 
 # ---------------------------------------------------------------------------

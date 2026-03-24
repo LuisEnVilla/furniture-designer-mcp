@@ -34,3 +34,6 @@ Or in `.mcp.json`:
 | `get_material_specs` | Material properties and limits |
 | `get_structural_rules` | All structural rules |
 | `get_hardware_catalog` | Hardware catalog with selection rules |
+| `build_3d_model` | Generate FreeCAD script to build the furniture in 3D |
+| `build_exploded_view` | Generate FreeCAD script for exploded assembly view |
+| `build_cut_diagram` | Generate FreeCAD script to visualize cut layout on sheets |
