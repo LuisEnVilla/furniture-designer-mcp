@@ -27,6 +27,8 @@ from .engine.freecad_scripts import (
     spec_to_freecad_script,
     exploded_view_script,
     cut_layout_script,
+    import_script as _import_script,
+    parse_freecad_export as _parse_export,
 )
 
 logger = logging.getLogger(__name__)
@@ -560,6 +562,74 @@ def build_cut_diagram(
     except Exception as e:
         logger.exception("build_cut_diagram failed")
         return [TextContent(type="text", text=f"Error generating cut diagram script: {e}")]
+
+
+# ---------------------------------------------------------------------------
+# FreeCAD import tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def build_import_script(
+    ctx: Context,
+    doc_name: str = "Furniture",
+) -> list[TextContent]:
+    """Generate a FreeCAD Python script that reads all panels from a document.
+
+    The script extracts every App::Part (with custom properties) and standalone
+    Part::Box from the specified document, then prints a JSON representation
+    to stdout. Execute the script via freecad-mcp's execute_code, then pass
+    the output to parse_freecad_import to get a usable furniture spec.
+
+    Workflow:
+    1. Call build_import_script(doc_name) → get Python script
+    2. Call mcp__freecad__execute_code(script) → get raw output with JSON
+    3. Call parse_freecad_import(raw_output) → get furniture spec
+    4. Use the spec with validate_structure, generate_bom, optimize_cuts, etc.
+
+    Args:
+        doc_name: Name of the FreeCAD document to read (default: "Furniture").
+
+    Returns:
+        Python code to execute in FreeCAD.
+    """
+    try:
+        code = _import_script(doc_name=doc_name)
+        return [TextContent(type="text", text=code)]
+    except Exception as e:
+        logger.exception("build_import_script failed")
+        return [TextContent(type="text", text=f"Error generating import script: {e}")]
+
+
+@mcp.tool()
+def parse_freecad_import(
+    ctx: Context,
+    raw_output: str,
+) -> list[TextContent]:
+    """Parse the output of the import script into a furniture spec.
+
+    Takes the raw stdout from executing the import script in FreeCAD and
+    reconstructs a furniture spec with parts, positions, materials, and roles.
+
+    For panels created by this system (App::Part with custom properties),
+    the reconstruction is exact. For manually created Part::Box objects,
+    roles are inferred from names and geometry.
+
+    Args:
+        raw_output: The stdout text from executing the import script via
+            freecad-mcp's execute_code tool.
+
+    Returns:
+        A furniture spec (JSON) compatible with validate_structure,
+        generate_bom, optimize_cuts, build_exploded_view, etc.
+        May include "import_warnings" if any panels needed inference.
+    """
+    try:
+        spec = _parse_export(raw_output)
+        return [TextContent(type="text", text=json.dumps(spec, indent=2, ensure_ascii=False))]
+    except Exception as e:
+        logger.exception("parse_freecad_import failed")
+        return [TextContent(type="text", text=f"Error parsing FreeCAD import: {e}")]
 
 
 # ---------------------------------------------------------------------------

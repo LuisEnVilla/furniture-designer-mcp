@@ -40,6 +40,8 @@ validate      generate_bom    optimize_cuts
 | `build_3d_model` | Script Python para FreeCAD con componentes App::Part, grupos por rol y propiedades de material |
 | `build_exploded_view` | Script para vista explosionada con separación por eje de ensamble |
 | `build_cut_diagram` | Script para visualizar layout de corte en FreeCAD (vista superior) |
+| `build_import_script` | Script para leer paneles de un documento FreeCAD existente |
+| `parse_freecad_import` | Reconstruir spec desde la salida del script de importación |
 
 ### Consideraciones
 
@@ -100,13 +102,20 @@ Todas las knowledge tools aceptan `brief=true` para respuestas compactas.
 | `optimize_cuts` | Optimización de corte 2D en tableros estándar con soporte de veta y kerf |
 | `get_assembly_steps` | Instrucciones de ensamble paso a paso en español |
 
-### FreeCAD (requiere freecad-mcp)
+### FreeCAD — Exportar (requiere freecad-mcp)
 
 | Tool | Descripción |
 |---|---|
 | `build_3d_model` | Script para modelo 3D con componentes, grupos y propiedades |
 | `build_exploded_view` | Script para vista explosionada |
 | `build_cut_diagram` | Script para diagrama de corte (vista superior) |
+
+### FreeCAD — Importar (requiere freecad-mcp)
+
+| Tool | Descripción |
+|---|---|
+| `build_import_script` | Script para extraer paneles de un documento FreeCAD existente |
+| `parse_freecad_import` | Parsear salida del script de importación a spec de mueble |
 
 ## Tipos de mueble soportados
 

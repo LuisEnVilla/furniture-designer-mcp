@@ -1,4 +1,4 @@
-"""Generate FreeCAD Python scripts from furniture specs.
+"""Generate and read FreeCAD Python scripts from/to furniture specs.
 
 These scripts are meant to be executed via freecad-mcp's execute_code tool.
 Each function returns a Python code string ready for FreeCAD's interpreter.
@@ -8,6 +8,10 @@ Best practices applied:
 - Groups by role for tree organization (Estructura, Puertas, etc.)
 - Custom properties for material, thickness, role, edge banding
 - Descriptive labels on each component
+
+Import flow (FreeCAD → spec):
+- import_script() generates a Python script that reads all App::Part components
+- parse_freecad_export() reconstructs a furniture spec from the script output
 """
 
 from __future__ import annotations
@@ -419,3 +423,326 @@ def cut_layout_script(cut_result: dict, doc_name: str = "CutLayout") -> str:
     lines.append(f'print("Cut layout: {len(sheets)} sheets rendered")')
 
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Import from FreeCAD
+# ---------------------------------------------------------------------------
+
+def import_script(doc_name: str = "Furniture") -> str:
+    """Generate a FreeCAD Python script that extracts all panels as JSON.
+
+    The script reads every App::Part in the document, extracts custom
+    properties (Role, Material, Thickness_mm, RealDimensions, EdgeBanding)
+    and the Placement, then prints a JSON object to stdout.
+
+    For objects WITHOUT custom properties (manually created Part::Box),
+    it falls back to reading geometry (Length, Width, Height) and attempts
+    to infer the role from the object name.
+
+    Args:
+        doc_name: Name of the FreeCAD document to read.
+
+    Returns:
+        Python code string. Execute via freecad-mcp's execute_code.
+        The stdout will contain a JSON string to pass to parse_freecad_export().
+    """
+    # The script runs inside FreeCAD's Python interpreter
+    return '''import FreeCAD
+import json
+
+doc_name = "''' + doc_name + '''"
+doc = FreeCAD.getDocument(doc_name)
+if doc is None:
+    print(json.dumps({"error": f"Document '{doc_name}' not found"}))
+else:
+    panels = []
+    groups_found = []
+
+    for obj in doc.Objects:
+        # Process App::Part containers (our standard)
+        if obj.TypeId == "App::Part":
+            panel = {"id": obj.Name, "label": obj.Label, "source": "App::Part"}
+
+            # Read custom properties
+            for prop in ["Role", "Material", "Thickness_mm", "RealDimensions", "EdgeBanding"]:
+                if hasattr(obj, prop):
+                    val = getattr(obj, prop)
+                    panel[prop] = val
+
+            # Read placement
+            pl = obj.Placement
+            panel["position_mm"] = {
+                "x": round(pl.Base.x, 2),
+                "y": round(pl.Base.y, 2),
+                "z": round(pl.Base.z, 2),
+            }
+
+            # Read child shape dimensions
+            for child in obj.Group:
+                if hasattr(child, "Length") and hasattr(child, "Width") and hasattr(child, "Height"):
+                    panel["freecad_dims"] = {
+                        "Length": round(child.Length, 2),
+                        "Width": round(child.Width, 2),
+                        "Height": round(child.Height, 2),
+                    }
+                    # Read color
+                    if hasattr(child, "ViewObject") and hasattr(child.ViewObject, "ShapeColor"):
+                        panel["color"] = list(child.ViewObject.ShapeColor)
+                    break
+
+            panels.append(panel)
+
+        # Process standalone Part::Box (manually created)
+        elif obj.TypeId == "Part::Box":
+            # Skip if it's inside an App::Part (already processed)
+            parents = obj.InList
+            if any(p.TypeId == "App::Part" for p in parents):
+                continue
+
+            panel = {
+                "id": obj.Name,
+                "label": obj.Label,
+                "source": "Part::Box",
+            }
+
+            panel["freecad_dims"] = {
+                "Length": round(obj.Length, 2),
+                "Width": round(obj.Width, 2),
+                "Height": round(obj.Height, 2),
+            }
+
+            pl = obj.Placement
+            panel["position_mm"] = {
+                "x": round(pl.Base.x, 2),
+                "y": round(pl.Base.y, 2),
+                "z": round(pl.Base.z, 2),
+            }
+
+            if hasattr(obj, "ViewObject") and hasattr(obj.ViewObject, "ShapeColor"):
+                panel["color"] = list(obj.ViewObject.ShapeColor)
+
+            panels.append(panel)
+
+        # Track groups
+        elif obj.TypeId == "App::DocumentObjectGroup":
+            groups_found.append({"name": obj.Name, "label": obj.Label, "count": len(obj.Group)})
+
+    result = {
+        "document": doc_name,
+        "total_panels": len(panels),
+        "groups": groups_found,
+        "panels": panels,
+    }
+    print("FURNITURE_SPEC_JSON:" + json.dumps(result, ensure_ascii=False))
+'''
+
+
+# -- Reverse coordinate mapping --
+_REVERSE_DIMS = {
+    # role: which FreeCAD axis is (width, height, thickness)
+    # FreeCAD axes: Length=X, Width=Y, Height=Z
+    "side":        ("Width", "Height", "Length"),     # thin in X
+    "divider":     ("Width", "Height", "Length"),     # thin in X
+    "bottom":      ("Length", "Width", "Height"),     # thin in Z
+    "top_panel":   ("Length", "Width", "Height"),     # thin in Z
+    "shelf":       ("Length", "Width", "Height"),     # thin in Z
+    "floor":       ("Length", "Width", "Height"),     # thin in Z
+    "back":        ("Length", "Height", "Width"),     # thin in Y
+    "door":        ("Length", "Height", "Width"),     # thin in Y
+    "drawer_front":("Length", "Height", "Width"),     # thin in Y
+    "rail":        ("Length", "Height", "Width"),     # thin in Y
+    "kickplate":   ("Length", "Height", "Width"),     # thin in Y
+}
+
+
+def _infer_role_from_name(name: str) -> str:
+    """Best-effort role inference from object name/label."""
+    n = name.lower()
+    if "side" in n or "lateral" in n:
+        return "side"
+    if "bottom" in n or "piso" in n or "floor" in n:
+        return "bottom"
+    if "top" in n or "tapa" in n or "techo" in n:
+        return "top_panel"
+    if "back" in n or "respaldo" in n or "trasero" in n:
+        return "back"
+    if "shelf" in n or "repisa" in n or "estante" in n:
+        return "shelf"
+    if "door" in n or "puerta" in n:
+        return "door"
+    if "rail" in n or "travesaño" in n or "travesano" in n:
+        return "rail"
+    if "kick" in n or "zocalo" in n or "zócalo" in n:
+        return "kickplate"
+    if "divid" in n or "division" in n or "división" in n:
+        return "divider"
+    if "drawer" in n or "cajon" in n or "cajón" in n:
+        return "drawer_front"
+    return "unknown"
+
+
+def _infer_role_from_geometry(dims: dict, pos: dict) -> str:
+    """Infer role from FreeCAD box dimensions and position.
+
+    Heuristic based on which axis is thinnest:
+    - Thin in X (Length) → side or divider
+    - Thin in Z (Height) → shelf, bottom, or top_panel
+    - Thin in Y (Width) → back, door, rail, or kickplate
+    """
+    l, w, h = dims["Length"], dims["Width"], dims["Height"]
+    min_dim = min(l, w, h)
+
+    if min_dim == h and h <= 20:
+        # Thin in Z — horizontal panel
+        if pos["z"] < 20:
+            return "bottom"
+        return "shelf"
+    if min_dim == l and l <= 20:
+        # Thin in X — vertical side panel
+        return "side"
+    if min_dim == w and w <= 20:
+        # Thin in Y — back or front panel
+        if pos["y"] > 200:
+            return "back"
+        return "door"
+
+    return "unknown"
+
+
+def parse_freecad_export(raw_output: str) -> dict:
+    """Parse the JSON output from the import script into a furniture spec.
+
+    Handles two cases:
+    1. Panels with custom properties (from our system) → direct reconstruction
+    2. Standalone Part::Box (manually created) → geometry-based inference
+
+    Args:
+        raw_output: The stdout from executing the import script in FreeCAD.
+            Must contain the line starting with "FURNITURE_SPEC_JSON:".
+
+    Returns:
+        A furniture spec compatible with validate_structure, generate_bom, etc.
+        Includes a "warnings" key if any panels needed role inference.
+    """
+    # Extract JSON from output
+    json_str = None
+    for line in raw_output.split("\n"):
+        if line.startswith("FURNITURE_SPEC_JSON:"):
+            json_str = line[len("FURNITURE_SPEC_JSON:"):]
+            break
+
+    if json_str is None:
+        return {"error": "No FURNITURE_SPEC_JSON found in output. Ensure the import script ran correctly."}
+
+    try:
+        data = json.loads(json_str)
+    except json.JSONDecodeError as e:
+        return {"error": f"Invalid JSON in output: {e}"}
+
+    if "error" in data:
+        return data
+
+    panels = data.get("panels", [])
+    if not panels:
+        return {"error": "No panels found in document."}
+
+    parts = []
+    warnings = []
+    materials_seen = set()
+
+    for panel in panels:
+        pid = panel["id"]
+
+        # Determine role
+        role = panel.get("Role", "")
+        if not role:
+            # Try inferring from name
+            role = _infer_role_from_name(panel.get("label", pid))
+            if role == "unknown" and "freecad_dims" in panel and "position_mm" in panel:
+                role = _infer_role_from_geometry(panel["freecad_dims"], panel["position_mm"])
+            if role == "unknown":
+                warnings.append(f"Could not determine role for '{pid}'. Assigned 'unknown'. Please set Role property in FreeCAD.")
+
+        # Determine dimensions
+        real_dims = panel.get("RealDimensions", "")
+        if real_dims and "x" in real_dims:
+            # Parse "580x700x16" format
+            try:
+                parts_str = real_dims.split("x")
+                width_mm = float(parts_str[0])
+                height_mm = float(parts_str[1])
+                thickness_mm = float(parts_str[2])
+            except (ValueError, IndexError):
+                real_dims = ""  # Fall through to geometry-based
+
+        if not real_dims and "freecad_dims" in panel:
+            # Reverse-map from FreeCAD dimensions
+            fd = panel["freecad_dims"]
+            mapping = _REVERSE_DIMS.get(role)
+            if mapping:
+                width_mm = fd[mapping[0]]
+                height_mm = fd[mapping[1]]
+                thickness_mm = fd[mapping[2]]
+            else:
+                # Unknown role — use sorted dims (largest=width, mid=height, smallest=thickness)
+                sorted_dims = sorted([fd["Length"], fd["Width"], fd["Height"]], reverse=True)
+                width_mm = sorted_dims[0]
+                height_mm = sorted_dims[1]
+                thickness_mm = sorted_dims[2]
+                warnings.append(f"Panel '{pid}' has unknown role — dimensions assigned by size (width={width_mm}, height={height_mm}, thickness={thickness_mm}).")
+
+        if not real_dims and "freecad_dims" not in panel:
+            warnings.append(f"Panel '{pid}' has no dimensions. Skipping.")
+            continue
+
+        # Build part dict
+        material = panel.get("Material", "")
+        if material:
+            materials_seen.add(material)
+
+        part = {
+            "id": pid,
+            "role": role,
+            "width_mm": width_mm,
+            "height_mm": height_mm,
+            "thickness_mm": thickness_mm,
+            "material": material,
+            "position_mm": panel.get("position_mm", {"x": 0, "y": 0, "z": 0}),
+        }
+
+        edge_banding = panel.get("EdgeBanding", "")
+        if edge_banding:
+            part["edge_banding"] = edge_banding
+
+        parts.append(part)
+
+    # Infer furniture-level metadata
+    all_positions_z = [p["position_mm"]["z"] for p in parts]
+    max_z = max(all_positions_z) if all_positions_z else 0
+    max_heights = [p["height_mm"] for p in parts if p["role"] in ("side", "divider")]
+    furniture_height_mm = (max_z + max(max_heights)) if max_heights else max_z
+
+    all_positions_x = [p["position_mm"]["x"] + p.get("width_mm", 0) for p in parts]
+    furniture_width_mm = max(all_positions_x) if all_positions_x else 0
+
+    all_positions_y = [p["position_mm"]["y"] + p.get("height_mm", 0) for p in parts if p["role"] in ("side", "bottom")]
+    furniture_depth_mm = max(all_positions_y) if all_positions_y else 0
+
+    spec = {
+        "furniture_type": "imported",
+        "source": "freecad",
+        "document": data.get("document", ""),
+        "material": list(materials_seen)[0] if len(materials_seen) == 1 else "mixed",
+        "dimensions_cm": {
+            "width": round(furniture_width_mm / 10, 1),
+            "height": round(furniture_height_mm / 10, 1),
+            "depth": round(furniture_depth_mm / 10, 1),
+        },
+        "parts": parts,
+    }
+
+    if warnings:
+        spec["import_warnings"] = warnings
+
+    return spec
