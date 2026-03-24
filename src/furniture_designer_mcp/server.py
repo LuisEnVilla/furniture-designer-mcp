@@ -10,6 +10,15 @@ from .knowledge.ergonomics import ERGONOMIC_STANDARDS
 from .knowledge.materials import MATERIALS
 from .knowledge.structural_rules import STRUCTURAL_RULES
 from .knowledge.hardware import HARDWARE_CATALOG
+from .knowledge.assembly_specs import ASSEMBLY_SPECS
+from .knowledge.brief_formatters import (
+    brief_standards,
+    brief_material,
+    brief_structural_rules,
+    brief_hardware,
+    brief_hardware_category,
+    brief_assembly_specs,
+)
 from .engine.designer import generate_furniture_spec
 from .engine.cut_optimizer import optimize_cuts as _optimize_cuts
 from .engine.structural_validator import validate_structure as _validate
@@ -38,12 +47,13 @@ mcp = FastMCP(
 
 
 @mcp.tool()
-def get_standards(ctx: Context, furniture_type: str) -> list[TextContent]:
+def get_standards(ctx: Context, furniture_type: str, brief: bool = False) -> list[TextContent]:
     """Get ergonomic standards for a furniture type.
 
     Args:
         furniture_type: One of: kitchen_base, kitchen_wall, closet, bookshelf,
             desk, vanity, general
+        brief: If true, return a compact summary instead of full JSON (saves tokens).
 
     Returns:
         Ergonomic standards (heights, depths, clearances) for the given type.
@@ -52,16 +62,19 @@ def get_standards(ctx: Context, furniture_type: str) -> list[TextContent]:
     if standards is None:
         available = ", ".join(ERGONOMIC_STANDARDS.keys())
         return [TextContent(type="text", text=f"Unknown type '{furniture_type}'. Available: {available}")]
+    if brief:
+        return [TextContent(type="text", text=brief_standards(standards))]
     return [TextContent(type="text", text=json.dumps(standards, indent=2, ensure_ascii=False))]
 
 
 @mcp.tool()
-def get_material_specs(ctx: Context, material: str) -> list[TextContent]:
+def get_material_specs(ctx: Context, material: str, brief: bool = False) -> list[TextContent]:
     """Get technical specifications for a material.
 
     Args:
         material: One of: mdf_15, mdf_18, melamine_16, melamine_18, plywood_18,
             solid_pine_20
+        brief: If true, return a compact summary instead of full JSON (saves tokens).
 
     Returns:
         Material properties: max unsupported span, available thicknesses,
@@ -71,27 +84,35 @@ def get_material_specs(ctx: Context, material: str) -> list[TextContent]:
     if specs is None:
         available = ", ".join(MATERIALS.keys())
         return [TextContent(type="text", text=f"Unknown material '{material}'. Available: {available}")]
+    if brief:
+        return [TextContent(type="text", text=brief_material(specs))]
     return [TextContent(type="text", text=json.dumps(specs, indent=2, ensure_ascii=False))]
 
 
 @mcp.tool()
-def get_structural_rules(ctx: Context) -> list[TextContent]:
+def get_structural_rules(ctx: Context, brief: bool = False) -> list[TextContent]:
     """Get all structural rules for furniture design.
+
+    Args:
+        brief: If true, return a compact summary instead of full JSON (saves tokens).
 
     Returns:
         List of rules covering reinforcement, back panels, kick plates, shelf
         supports, vertical dividers, and load-bearing requirements.
     """
+    if brief:
+        return [TextContent(type="text", text=brief_structural_rules(STRUCTURAL_RULES))]
     return [TextContent(type="text", text=json.dumps(STRUCTURAL_RULES, indent=2, ensure_ascii=False))]
 
 
 @mcp.tool()
-def get_hardware_catalog(ctx: Context, category: str | None = None) -> list[TextContent]:
+def get_hardware_catalog(ctx: Context, category: str | None = None, brief: bool = False) -> list[TextContent]:
     """Get hardware catalog with selection rules.
 
     Args:
         category: Optional filter — one of: hinges, slides, connectors, shelf_pins.
             If omitted, returns the full catalog.
+        brief: If true, return a compact summary instead of full JSON (saves tokens).
 
     Returns:
         Hardware specifications with placement rules and quantities.
@@ -101,9 +122,45 @@ def get_hardware_catalog(ctx: Context, category: str | None = None) -> list[Text
         if data is None:
             available = ", ".join(HARDWARE_CATALOG.keys())
             return [TextContent(type="text", text=f"Unknown category '{category}'. Available: {available}")]
+        if brief:
+            return [TextContent(type="text", text=brief_hardware_category(data))]
     else:
         data = HARDWARE_CATALOG
+        if brief:
+            return [TextContent(type="text", text=brief_hardware(data))]
     return [TextContent(type="text", text=json.dumps(data, indent=2, ensure_ascii=False))]
+
+
+@mcp.tool()
+def get_assembly_specs(ctx: Context, topic: str | None = None, brief: bool = False) -> list[TextContent]:
+    """Get detailed assembly specifications for furniture construction.
+
+    Covers joint methods, fastener patterns, adhesive usage, pre-drilling
+    depths, hinge mounting, drawer slide installation, and shelf pin systems.
+
+    Args:
+        topic: Optional filter — one of: panel_to_panel, back_panel,
+            hinge_mounting, drawer_slide_mounting, shelf_pins, adhesive_guide,
+            pre_drilling. If omitted, returns all topics.
+        brief: If true, return a compact summary instead of full JSON (saves tokens).
+
+    Returns:
+        Assembly specifications with step-by-step processes, fastener types,
+        and material-specific parameters.
+    """
+    if topic is not None:
+        data = ASSEMBLY_SPECS.get(topic)
+        if data is None:
+            available = ", ".join(ASSEMBLY_SPECS.keys())
+            return [TextContent(type="text", text=f"Unknown topic '{topic}'. Available: {available}")]
+        if brief:
+            return [TextContent(type="text", text=brief_assembly_specs(data))]
+        return [TextContent(type="text", text=json.dumps(data, indent=2, ensure_ascii=False))]
+    else:
+        if brief:
+            sections = [brief_assembly_specs(v) for v in ASSEMBLY_SPECS.values()]
+            return [TextContent(type="text", text="\n\n".join(sections))]
+        return [TextContent(type="text", text=json.dumps(ASSEMBLY_SPECS, indent=2, ensure_ascii=False))]
 
 
 # ---------------------------------------------------------------------------
@@ -194,20 +251,29 @@ def optimize_cuts(
     sheet_width: float = 2440,
     sheet_height: float = 1220,
     blade_kerf: float = 3,
+    grain_direction: str = "auto",
 ) -> list[TextContent]:
     """Optimize panel cuts on standard sheets using guillotine algorithm.
 
     Args:
         parts: List of parts — each: {"id": "side_left", "width": 580,
-            "height": 750, "qty": 1, "can_rotate": true}
+            "height": 750, "qty": 1, "can_rotate": true, "grain": "length"}
             Dimensions in mm.
-        sheet_width: Sheet width in mm (default: 2440 — standard 8ft)
+            Grain options per piece: "length" (grain along width — no rotation),
+            "width" (grain along height — auto-rotates to match sheet),
+            "none" (free rotation).
+        sheet_width: Sheet width in mm (default: 2440 — standard 8ft).
+            Grain runs along this axis on the sheet.
         sheet_height: Sheet height in mm (default: 1220 — standard 4ft)
         blade_kerf: Saw blade width in mm (default: 3)
+        grain_direction: Global default grain for pieces without explicit grain.
+            "auto" (default) = use each piece's grain/can_rotate fields.
+            "length" = all pieces have grain along their width.
+            "none" = ignore grain, free rotation.
 
     Returns:
         Optimization result: sheets used, piece positions, waste percentage,
-        and a text diagram.
+        grain arrows, and a text diagram.
     """
     try:
         result = _optimize_cuts(
@@ -215,6 +281,7 @@ def optimize_cuts(
             sheet_width=sheet_width,
             sheet_height=sheet_height,
             blade_kerf=blade_kerf,
+            grain_direction=grain_direction,
         )
         return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
     except Exception as e:

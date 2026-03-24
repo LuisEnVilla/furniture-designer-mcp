@@ -2,6 +2,12 @@
 
 These scripts are meant to be executed via freecad-mcp's execute_code tool.
 Each function returns a Python code string ready for FreeCAD's interpreter.
+
+Best practices applied:
+- App::Part container per panel (proper component pattern)
+- Groups by role for tree organization (Estructura, Puertas, etc.)
+- Custom properties for material, thickness, role, edge banding
+- Descriptive labels on each component
 """
 
 from __future__ import annotations
@@ -25,6 +31,36 @@ _COLORS = {
 }
 
 _DEFAULT_COLOR = (0.80, 0.70, 0.55, 1.0)
+
+# -- Group classification by role --
+_ROLE_GROUPS = {
+    "side": "Estructura",
+    "bottom": "Estructura",
+    "top_panel": "Estructura",
+    "floor": "Estructura",
+    "divider": "Estructura",
+    "rail": "Estructura",
+    "kickplate": "Estructura",
+    "back": "Respaldo",
+    "shelf": "Repisas",
+    "door": "Puertas",
+    "drawer_front": "Cajones",
+}
+
+# -- Descriptive labels by role --
+_ROLE_LABELS = {
+    "side": "Lateral",
+    "bottom": "Piso",
+    "top_panel": "Tapa superior",
+    "floor": "Piso",
+    "shelf": "Repisa",
+    "back": "Respaldo",
+    "door": "Puerta",
+    "rail": "Travesaño",
+    "kickplate": "Zócalo",
+    "divider": "División vertical",
+    "drawer_front": "Frente de cajón",
+}
 
 
 def _box_dims(part: dict) -> tuple[float, float, float]:
@@ -71,8 +107,111 @@ def _box_dims(part: dict) -> tuple[float, float, float]:
         return (w, h, t)
 
 
+def _safe_name(pid: str) -> str:
+    """Sanitize a part id for use as FreeCAD object name."""
+    return pid.replace("-", "_").replace(" ", "_")
+
+
+def _generate_groups_code(parts: list[dict]) -> tuple[list[str], dict[str, str]]:
+    """Generate code to create role-based groups and return role→group_var mapping."""
+    roles_present = set(p["role"] for p in parts)
+    groups_needed = {}
+    for role in roles_present:
+        group_name = _ROLE_GROUPS.get(role, "Otros")
+        if group_name not in groups_needed:
+            groups_needed[group_name] = f"grp_{group_name.lower().replace(' ', '_')}"
+
+    lines = ["# -- Groups by role --"]
+    for group_name, var_name in sorted(groups_needed.items()):
+        lines.append(f'{var_name} = doc.addObject("App::DocumentObjectGroup", "{group_name}")')
+        lines.append(f'{var_name}.Label = "{group_name}"')
+    lines.append("")
+
+    # Map role → group variable
+    role_to_var = {}
+    for role in roles_present:
+        group_name = _ROLE_GROUPS.get(role, "Otros")
+        role_to_var[role] = groups_needed[group_name]
+
+    return lines, role_to_var
+
+
+def _generate_panel_code(
+    part: dict,
+    role_to_group: dict[str, str],
+    offset: tuple[float, float, float] = (0, 0, 0),
+) -> list[str]:
+    """Generate code for a single panel with App::Part container and properties."""
+    pid = part["id"]
+    role = part["role"]
+    safe = _safe_name(pid)
+    length, width, height = _box_dims(part)
+    pos = part.get("position_mm", {"x": 0, "y": 0, "z": 0})
+    color = _COLORS.get(role, _DEFAULT_COLOR)
+    group_var = role_to_group.get(role, "doc")
+    label = _ROLE_LABELS.get(role, role)
+    material = part.get("material", "")
+    thickness = part.get("thickness_mm", 0)
+    edge_banding = part.get("edge_banding", "")
+
+    px = pos["x"] + offset[0]
+    py = pos["y"] + offset[1]
+    pz = pos["z"] + offset[2]
+
+    lines = []
+    lines.append(f"# -- {pid} ({role}) --")
+
+    # Create App::Part container
+    lines.append(f'{safe}_part = doc.addObject("App::Part", "{safe}")')
+    lines.append(f'{safe}_part.Label = "{label} — {pid}"')
+
+    # Create the box shape inside the Part
+    lines.append(f'{safe} = doc.addObject("Part::Box", "{safe}_shape")')
+    lines.append(f"{safe}.Length = {length}")
+    lines.append(f"{safe}.Width = {width}")
+    lines.append(f"{safe}.Height = {height}")
+
+    # Add shape to Part container
+    lines.append(f"{safe}_part.addObject({safe})")
+
+    # Position the Part container
+    lines.append(
+        f"{safe}_part.Placement = FreeCAD.Placement("
+        f"FreeCAD.Vector({px}, {py}, {pz}), "
+        f"FreeCAD.Rotation(0, 0, 0, 1))"
+    )
+
+    # Visual properties
+    lines.append(f"{safe}.ViewObject.ShapeColor = {color}")
+    lines.append(f"{safe}.ViewObject.Transparency = 10")
+
+    # Custom properties for metadata
+    lines.append(f'{safe}_part.addProperty("App::PropertyString", "Role", "Furniture", "Panel role")')
+    lines.append(f'{safe}_part.Role = "{role}"')
+    lines.append(f'{safe}_part.addProperty("App::PropertyString", "Material", "Furniture", "Material type")')
+    lines.append(f'{safe}_part.Material = "{material}"')
+    lines.append(f'{safe}_part.addProperty("App::PropertyFloat", "Thickness_mm", "Furniture", "Panel thickness in mm")')
+    lines.append(f"{safe}_part.Thickness_mm = {thickness}")
+    lines.append(f'{safe}_part.addProperty("App::PropertyString", "RealDimensions", "Furniture", "WxHxT in mm")')
+    lines.append(f'{safe}_part.RealDimensions = "{part["width_mm"]}x{part["height_mm"]}x{thickness}"')
+
+    if edge_banding:
+        eb_str = edge_banding if isinstance(edge_banding, str) else json.dumps(edge_banding, ensure_ascii=False)
+        lines.append(f'{safe}_part.addProperty("App::PropertyString", "EdgeBanding", "Furniture", "Edge banding spec")')
+        lines.append(f'{safe}_part.EdgeBanding = "{eb_str}"')
+
+    # Add Part to group
+    lines.append(f"{group_var}.addObject({safe}_part)")
+    lines.append("")
+
+    return lines
+
+
 def spec_to_freecad_script(spec: dict, doc_name: str = "Furniture") -> str:
     """Generate a FreeCAD Python script that builds the full 3D model.
+
+    Uses App::Part containers, role-based groups, and custom properties
+    for material, dimensions, and edge banding.
 
     Args:
         spec: Furniture spec as returned by design_furniture.
@@ -84,42 +223,25 @@ def spec_to_freecad_script(spec: dict, doc_name: str = "Furniture") -> str:
     parts = spec.get("parts", [])
     furniture_type = spec.get("furniture_type", "cabinet")
     dims = spec.get("dimensions_cm", {})
+    material_name = spec.get("material", "")
 
     lines = [
         "import FreeCAD",
         "import Part",
         "",
         f"# {furniture_type} — {dims.get('width', '?')}x{dims.get('height', '?')}x{dims.get('depth', '?')} cm",
+        f"# Material: {material_name}",
         f'doc = FreeCAD.newDocument("{doc_name}")',
         "",
     ]
 
+    # Create groups
+    group_lines, role_to_group = _generate_groups_code(parts)
+    lines.extend(group_lines)
+
+    # Create panels
     for part in parts:
-        pid = part["id"]
-        role = part["role"]
-        length, width, height = _box_dims(part)
-        pos = part.get("position_mm", {"x": 0, "y": 0, "z": 0})
-        color = _COLORS.get(role, _DEFAULT_COLOR)
-
-        # Sanitize name for FreeCAD (no spaces, starts with letter)
-        safe_name = pid.replace("-", "_").replace(" ", "_")
-
-        lines.append(f"# -- {pid} ({role}) --")
-        lines.append(f'{safe_name} = doc.addObject("Part::Box", "{safe_name}")')
-        lines.append(f"{safe_name}.Length = {length}")
-        lines.append(f"{safe_name}.Width = {width}")
-        lines.append(f"{safe_name}.Height = {height}")
-        lines.append(
-            f"{safe_name}.Placement = FreeCAD.Placement("
-            f"FreeCAD.Vector({pos['x']}, {pos['y']}, {pos['z']}), "
-            f"FreeCAD.Rotation(0, 0, 0, 1))"
-        )
-        lines.append(
-            f"{safe_name}.ViewObject.ShapeColor = {color}"
-        )
-        lines.append(f"{safe_name}.ViewObject.Transparency = 10")
-        lines.append(f'# Label: {pid} [{part["width_mm"]}x{part["height_mm"]}x{part["thickness_mm"]}mm]')
-        lines.append("")
+        lines.extend(_generate_panel_code(part, role_to_group))
 
     lines.append("doc.recompute()")
     lines.append("FreeCADGui.activeDocument().activeView().viewIsometric()")
@@ -171,38 +293,24 @@ def exploded_view_script(spec: dict, gap_mm: float = 50, doc_name: str = "Explod
         "",
     ]
 
-    for i, part in enumerate(parts):
+    # Create groups
+    group_lines, role_to_group = _generate_groups_code(parts)
+    lines.extend(group_lines)
+
+    for part in parts:
         pid = part["id"]
         role = part["role"]
-        length, width, height = _box_dims(part)
         pos = part.get("position_mm", {"x": 0, "y": 0, "z": 0})
-        color = _COLORS.get(role, _DEFAULT_COLOR)
-        safe_name = pid.replace("-", "_").replace(" ", "_")
 
-        # Apply explosion offset
+        # Calculate explosion offset
         dx, dy, dz = _explosion.get(role, (0, 0, 0))
-        # For sides, left goes negative, right goes positive
         if role == "side" and "right" in pid:
             dx = abs(dx)
         elif role == "side" and "left" in pid:
             dx = -abs(dx)
 
-        ex = pos["x"] + dx * gap_mm
-        ey = pos["y"] + dy * gap_mm
-        ez = pos["z"] + dz * gap_mm
-
-        lines.append(f'{safe_name} = doc.addObject("Part::Box", "{safe_name}")')
-        lines.append(f"{safe_name}.Length = {length}")
-        lines.append(f"{safe_name}.Width = {width}")
-        lines.append(f"{safe_name}.Height = {height}")
-        lines.append(
-            f"{safe_name}.Placement = FreeCAD.Placement("
-            f"FreeCAD.Vector({ex}, {ey}, {ez}), "
-            f"FreeCAD.Rotation(0, 0, 0, 1))"
-        )
-        lines.append(f"{safe_name}.ViewObject.ShapeColor = {color}")
-        lines.append(f"{safe_name}.ViewObject.Transparency = 15")
-        lines.append("")
+        offset = (dx * gap_mm, dy * gap_mm, dz * gap_mm)
+        lines.extend(_generate_panel_code(part, role_to_group, offset=offset))
 
     lines.append("doc.recompute()")
     lines.append("FreeCADGui.activeDocument().activeView().viewIsometric()")
@@ -225,8 +333,9 @@ def cut_layout_script(cut_result: dict, doc_name: str = "CutLayout") -> str:
         Python code string for FreeCAD.
     """
     sheets = cut_result.get("sheets", [])
-    sheet_w = cut_result.get("sheet_width_mm", 2440)
-    sheet_h = cut_result.get("sheet_height_mm", 1220)
+    sheet_size = cut_result.get("sheet_size_mm", {})
+    sheet_w = sheet_size.get("width", 2440)
+    sheet_h = sheet_size.get("height", 1220)
     panel_thickness = 3  # visual thickness for the 2D layout
 
     lines = [
@@ -252,10 +361,16 @@ def cut_layout_script(cut_result: dict, doc_name: str = "CutLayout") -> str:
     for si, sheet in enumerate(sheets):
         # Sheet base offset (stack sheets along Y)
         y_offset = si * (sheet_h + 100)
+        sheet_num = sheet.get("sheet_number", si + 1)
+
+        # Create group for this sheet
+        grp_name = f"Tablero_{sheet_num}"
+        lines.append(f"# -- Sheet {sheet_num} --")
+        lines.append(f'{grp_name} = doc.addObject("App::DocumentObjectGroup", "{grp_name}")')
+        lines.append(f'{grp_name}.Label = "Tablero {sheet_num}"')
 
         # Draw sheet outline (thin box)
-        sheet_name = f"Sheet_{si + 1}"
-        lines.append(f"# -- Sheet {si + 1} --")
+        sheet_name = f"Sheet_{sheet_num}"
         lines.append(f'{sheet_name} = doc.addObject("Part::Box", "{sheet_name}")')
         lines.append(f"{sheet_name}.Length = {sheet_w}")
         lines.append(f"{sheet_name}.Width = {sheet_h}")
@@ -267,31 +382,35 @@ def cut_layout_script(cut_result: dict, doc_name: str = "CutLayout") -> str:
         )
         lines.append(f"{sheet_name}.ViewObject.ShapeColor = (0.95, 0.93, 0.88, 1.0)")
         lines.append(f"{sheet_name}.ViewObject.Transparency = 0")
+        lines.append(f"{grp_name}.addObject({sheet_name})")
         lines.append("")
 
         # Draw pieces on this sheet
-        placements = sheet.get("placements", [])
-        for pi, piece in enumerate(placements):
+        pieces = sheet.get("pieces", [])
+        for pi, piece in enumerate(pieces):
             piece_id = piece.get("id", f"piece_{pi}")
             px = piece.get("x", 0)
             py = piece.get("y", 0)
-            pw = piece.get("placed_width", piece.get("width", 100))
-            ph = piece.get("placed_height", piece.get("height", 100))
+            pw = piece.get("width", 100)
+            ph = piece.get("height", 100)
+            rotated = piece.get("rotated", False)
 
-            safe_name = f"S{si + 1}_{piece_id}".replace("-", "_").replace(" ", "_")
+            safe = f"S{sheet_num}_{_safe_name(piece_id)}"
             color = _piece_colors[pi % len(_piece_colors)]
 
-            lines.append(f'{safe_name} = doc.addObject("Part::Box", "{safe_name}")')
-            lines.append(f"{safe_name}.Length = {pw}")
-            lines.append(f"{safe_name}.Width = {ph}")
-            lines.append(f"{safe_name}.Height = {panel_thickness}")
+            lines.append(f'{safe} = doc.addObject("Part::Box", "{safe}")')
+            lines.append(f"{safe}.Length = {pw}")
+            lines.append(f"{safe}.Width = {ph}")
+            lines.append(f"{safe}.Height = {panel_thickness}")
             lines.append(
-                f"{safe_name}.Placement = FreeCAD.Placement("
+                f"{safe}.Placement = FreeCAD.Placement("
                 f"FreeCAD.Vector({px}, {y_offset + py}, 1), "
                 f"FreeCAD.Rotation(0, 0, 0, 1))"
             )
-            lines.append(f"{safe_name}.ViewObject.ShapeColor = {color}")
-            lines.append(f"{safe_name}.ViewObject.Transparency = 0")
+            lines.append(f"{safe}.ViewObject.ShapeColor = {color}")
+            lines.append(f"{safe}.ViewObject.Transparency = 0")
+            lines.append(f'{safe}.Label = "{piece_id}{" (R)" if rotated else ""}"')
+            lines.append(f"{grp_name}.addObject({safe})")
             lines.append("")
 
     lines.append("doc.recompute()")
