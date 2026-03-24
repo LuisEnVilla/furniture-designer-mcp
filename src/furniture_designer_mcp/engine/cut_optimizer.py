@@ -91,8 +91,7 @@ def optimize_cuts(
                 sheets.append(new_sheet)
             else:
                 return {
-                    "error": f"Piece '{piece['id']}' ({piece['width']}x{piece['height']}mm) "
-                             f"doesn't fit in sheet ({sheet_width}x{sheet_height}mm)."
+                    "error": _build_fit_error(piece, sheet_width, sheet_height)
                 }
 
     # Calculate stats
@@ -136,6 +135,78 @@ def optimize_cuts(
         result["sheets"].append(sheet_data)
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Actionable error messages
+# ---------------------------------------------------------------------------
+
+def _build_fit_error(piece, sheet_width, sheet_height):
+    """Build a descriptive error message with suggestions when a piece doesn't fit."""
+    pid = piece["id"]
+    pw, ph = piece["width"], piece["height"]
+    grain = piece["grain"]
+    sheet_max = max(sheet_width, sheet_height)
+    sheet_min = min(sheet_width, sheet_height)
+
+    header = (
+        f"La pieza '{pid}' ({pw}x{ph}mm) no cabe en el tablero "
+        f"({sheet_width}x{sheet_height}mm)."
+    )
+    suggestions: list[str] = []
+
+    # Check if the piece fits rotated (ignoring grain)
+    fits_normal = pw <= sheet_width and ph <= sheet_height
+    fits_rotated = ph <= sheet_width and pw <= sheet_height
+
+    # 1. If grain is restrictive, suggest changing to 'none'
+    if grain in ("length", "width"):
+        suggestions.append(
+            f"Cambiar grain a 'none' para permitir rotación libre "
+            f"(actual: grain='{grain}')."
+        )
+
+        # 2. If it fits rotated but grain prevents it
+        if fits_rotated and not fits_normal:
+            suggestions.append(
+                f"La pieza cabe rotada ({ph}x{pw}mm). "
+                f"Usa grain='none' o can_rotate=true."
+            )
+        elif fits_normal and not fits_rotated:
+            suggestions.append(
+                f"La pieza cabe sin rotar ({pw}x{ph}mm) pero la orientación "
+                f"de grano actual lo impide. Revisa la dirección de grain."
+            )
+
+    elif grain == "none":
+        # Grain is already unrestricted — rotation didn't help either
+        pass
+
+    # 3. If the piece exceeds even the largest sheet dimension
+    piece_max = max(pw, ph)
+    piece_min = min(pw, ph)
+    if piece_max > sheet_max or piece_min > sheet_min:
+        suggestions.append(
+            f"La pieza excede las dimensiones del tablero. Usar un tablero "
+            f"más grande (se necesita al menos {piece_min}x{piece_max}mm útiles)."
+        )
+
+    # 4. If nothing else works, suggest splitting
+    if not fits_normal and not fits_rotated:
+        suggestions.append(
+            f"Dividir la pieza en partes más pequeñas que quepan en el tablero."
+        )
+
+    if not suggestions:
+        suggestions.append(
+            "Verificar las dimensiones de la pieza y del tablero."
+        )
+
+    lines = [header, "Sugerencias:"]
+    for s in suggestions:
+        lines.append(f"  - {s}")
+
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

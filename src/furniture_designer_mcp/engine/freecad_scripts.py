@@ -167,7 +167,9 @@ def _generate_panel_code(
 
     # Create App::Part container
     lines.append(f'{safe}_part = doc.addObject("App::Part", "{safe}")')
-    lines.append(f'{safe}_part.Label = "{label} — {pid}"')
+    w_mm = part["width_mm"]
+    h_mm = part["height_mm"]
+    lines.append(f'{safe}_part.Label = "{label} — {pid} ({w_mm}x{h_mm}x{thickness}mm)"')
 
     # Create the box shape inside the Part
     lines.append(f'{safe} = doc.addObject("Part::Box", "{safe}_shape")')
@@ -192,8 +194,9 @@ def _generate_panel_code(
     # Custom properties for metadata
     lines.append(f'{safe}_part.addProperty("App::PropertyString", "Role", "Furniture", "Panel role")')
     lines.append(f'{safe}_part.Role = "{role}"')
-    lines.append(f'{safe}_part.addProperty("App::PropertyString", "Material", "Furniture", "Material type")')
-    lines.append(f'{safe}_part.Material = "{material}"')
+    # Use "PanelMaterial" to avoid conflict with App::Part's built-in "Material" property
+    lines.append(f'{safe}_part.addProperty("App::PropertyString", "PanelMaterial", "Furniture", "Material type")')
+    lines.append(f'{safe}_part.PanelMaterial = "{material}"')
     lines.append(f'{safe}_part.addProperty("App::PropertyFloat", "Thickness_mm", "Furniture", "Panel thickness in mm")')
     lines.append(f"{safe}_part.Thickness_mm = {thickness}")
     lines.append(f'{safe}_part.addProperty("App::PropertyString", "RealDimensions", "Furniture", "WxHxT in mm")')
@@ -201,8 +204,9 @@ def _generate_panel_code(
 
     if edge_banding:
         eb_str = edge_banding if isinstance(edge_banding, str) else json.dumps(edge_banding, ensure_ascii=False)
+        # Use single quotes in generated code to avoid conflict with JSON double quotes
         lines.append(f'{safe}_part.addProperty("App::PropertyString", "EdgeBanding", "Furniture", "Edge banding spec")')
-        lines.append(f'{safe}_part.EdgeBanding = "{eb_str}"')
+        lines.append(f"{safe}_part.EdgeBanding = '{eb_str}'")
 
     # Add Part to group
     lines.append(f"{group_var}.addObject({safe}_part)")
@@ -465,7 +469,7 @@ else:
             panel = {"id": obj.Name, "label": obj.Label, "source": "App::Part"}
 
             # Read custom properties
-            for prop in ["Role", "Material", "Thickness_mm", "RealDimensions", "EdgeBanding"]:
+            for prop in ["Role", "PanelMaterial", "Thickness_mm", "RealDimensions", "EdgeBanding"]:
                 if hasattr(obj, prop):
                     val = getattr(obj, prop)
                     panel[prop] = val
@@ -697,7 +701,7 @@ def parse_freecad_export(raw_output: str) -> dict:
             continue
 
         # Build part dict
-        material = panel.get("Material", "")
+        material = panel.get("PanelMaterial", "")
         if material:
             materials_seen.add(material)
 
@@ -746,3 +750,142 @@ def parse_freecad_export(raw_output: str) -> dict:
         spec["import_warnings"] = warnings
 
     return spec
+
+
+# ---------------------------------------------------------------------------
+# TechDraw — 2D technical drawing with orthographic views
+# ---------------------------------------------------------------------------
+
+
+def techdraw_script(spec: dict, doc_name: str = "TechDraw") -> str:
+    """Generate a FreeCAD Python script that creates a TechDraw page.
+
+    Produces an A3 landscape sheet with three orthographic views
+    (front, top, right) of the assembled furniture, plus overall
+    dimension annotations for width, height, and depth.
+
+    The script assumes the 3D model already exists in FreeCAD
+    (built via spec_to_freecad_script). It reads the existing
+    document or creates a new one and rebuilds the geometry inline
+    so the TechDraw page has shapes to reference.
+
+    Args:
+        spec: Furniture spec as returned by design_furniture.
+        doc_name: Name for the FreeCAD document (default: "TechDraw").
+
+    Returns:
+        Python code string for FreeCAD's execute_code.
+    """
+    parts = spec.get("parts", [])
+    furniture_type = spec.get("furniture_type", "cabinet")
+    dims = spec.get("dimensions_cm", {})
+    material_name = spec.get("material", "")
+
+    # Compute overall bounding box from parts for dimension annotations
+    # We'll calculate in the script itself to keep it self-contained.
+
+    lines = [
+        "import FreeCAD",
+        "import Part",
+        "",
+        f"# TechDraw — {furniture_type} "
+        f"({dims.get('width', '?')}x{dims.get('height', '?')}x{dims.get('depth', '?')} cm)",
+        f"# Material: {material_name}",
+        "",
+        "# --- Rebuild geometry as a compound for TechDraw ---",
+        "shapes = []",
+    ]
+
+    # Generate simple boxes for each part (no App::Part, just shapes for compound)
+    for part in parts:
+        pid = part["id"]
+        safe = _safe_name(pid)
+        length, width, height = _box_dims(part)
+        pos = part.get("position_mm", {"x": 0, "y": 0, "z": 0})
+        lines.append(f"_b = Part.makeBox({length}, {width}, {height})")
+        lines.append(
+            f"_b.translate(FreeCAD.Vector({pos['x']}, {pos['y']}, {pos['z']}))"
+        )
+        lines.append(f"shapes.append(_b)  # {pid}")
+
+    lines.extend([
+        "",
+        "compound = Part.makeCompound(shapes)",
+        "",
+        f'doc = FreeCAD.newDocument("{doc_name}")',
+        'body = doc.addObject("Part::Feature", "FurnitureCompound")',
+        "body.Shape = compound",
+        "body.ViewObject.Visibility = False",
+        "",
+        "# --- TechDraw page ---",
+        "import TechDraw",
+        "",
+        "page = doc.addObject('TechDraw::DrawPage', 'Page')",
+        "template = doc.addObject('TechDraw::DrawSVGTemplate', 'Template')",
+        "template.Template = FreeCAD.getResourceDir() + 'Mod/TechDraw/Templates/A3_Landscape_blank.svg'",
+        "page.Template = template",
+        "",
+        "# Front view (looking from -Y toward +Y)",
+        "front = doc.addObject('TechDraw::DrawViewPart', 'FrontView')",
+        "front.Source = [body]",
+        "front.Direction = FreeCAD.Vector(0, -1, 0)",
+        "front.XDirection = FreeCAD.Vector(1, 0, 0)",
+        "front.ScaleType = 'Custom'",
+    ])
+
+    # Auto-scale: fit the largest dimension into ~250mm on paper
+    lines.extend([
+        "",
+        "# Auto-scale to fit A3",
+        "bbox = compound.BoundBox",
+        "max_dim = max(bbox.XLength, bbox.YLength, bbox.ZLength)",
+        "scale = 250.0 / max_dim if max_dim > 0 else 0.1",
+        "scale = round(scale, 3)",
+        "front.Scale = scale",
+        "front.X = 150",
+        "front.Y = 150",
+        "page.addView(front)",
+        "",
+        "# Top view (looking from +Z down)",
+        "top_view = doc.addObject('TechDraw::DrawViewPart', 'TopView')",
+        "top_view.Source = [body]",
+        "top_view.Direction = FreeCAD.Vector(0, 0, -1)",
+        "top_view.XDirection = FreeCAD.Vector(1, 0, 0)",
+        "top_view.ScaleType = 'Custom'",
+        "top_view.Scale = scale",
+        "top_view.X = 150",
+        "top_view.Y = 50",
+        "page.addView(top_view)",
+        "",
+        "# Right view (looking from +X toward -X)",
+        "right_view = doc.addObject('TechDraw::DrawViewPart', 'RightView')",
+        "right_view.Source = [body]",
+        "right_view.Direction = FreeCAD.Vector(1, 0, 0)",
+        "right_view.XDirection = FreeCAD.Vector(0, 1, 0)",
+        "right_view.ScaleType = 'Custom'",
+        "right_view.Scale = scale",
+        "right_view.X = 330",
+        "right_view.Y = 150",
+        "page.addView(right_view)",
+        "",
+        "# --- Overall dimension annotations ---",
+        "# Width annotation (horizontal on front view)",
+        "dim_w = doc.addObject('TechDraw::DrawViewDimension', 'DimWidth')",
+        "dim_w.Type = 'Distance'",
+        "dim_w.FormatSpec = f'{bbox.XLength:.0f}'",
+        "",
+        "# Height annotation (vertical on front view)",
+        "dim_h = doc.addObject('TechDraw::DrawViewDimension', 'DimHeight')",
+        "dim_h.Type = 'Distance'",
+        "dim_h.FormatSpec = f'{bbox.ZLength:.0f}'",
+        "",
+        "# Depth annotation (horizontal on top view)",
+        "dim_d = doc.addObject('TechDraw::DrawViewDimension', 'DimDepth')",
+        "dim_d.Type = 'Distance'",
+        "dim_d.FormatSpec = f'{bbox.YLength:.0f}'",
+        "",
+        "doc.recompute()",
+        f'print("TechDraw page created for {furniture_type} with 3 views at scale", scale)',
+    ])
+
+    return "\n".join(lines)

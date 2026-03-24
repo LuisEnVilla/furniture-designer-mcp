@@ -53,6 +53,9 @@ validate      generate_bom    optimize_cuts
 - **Muebles altos (>180cm)**: el validador genera warning de anclaje a pared.
 - **Modo `brief`**: las knowledge tools aceptan `brief=true` para respuestas compactas (ahorro de 34-84% en tokens). Recomendado para agentes con ventana de contexto limitada.
 - **FreeCAD**: los scripts generan componentes `App::Part` con propiedades (`Material`, `Role`, `Thickness_mm`, `RealDimensions`, `EdgeBanding`) y grupos por función (`Estructura`, `Repisas`, `Puertas`, `Respaldo`). Requiere FreeCAD 0.21+ con el addon MCP.
+- Los **labels de paneles** en FreeCAD incluyen dimensiones en mm (ej: "Lateral — side_left (590×2215×18mm)")
+- Todas las tools validan el spec de entrada y retornan errores claros si el formato es incorrecto
+- El optimizador de cortes genera **sugerencias accionables** cuando una pieza no cabe en el tablero
 
 ## Instalación
 
@@ -73,7 +76,7 @@ O en `.mcp.json`:
 }
 ```
 
-## Herramientas (13 tools)
+## Herramientas (16 tools)
 
 ### Diseño
 
@@ -109,6 +112,7 @@ Todas las knowledge tools aceptan `brief=true` para respuestas compactas.
 | `build_3d_model` | Script para modelo 3D con componentes, grupos y propiedades |
 | `build_exploded_view` | Script para vista explosionada |
 | `build_cut_diagram` | Script para diagrama de corte (vista superior) |
+| `build_techdraw` | Script para plano técnico TechDraw con vistas ortogonales |
 
 ### FreeCAD — Importar (requiere freecad-mcp)
 

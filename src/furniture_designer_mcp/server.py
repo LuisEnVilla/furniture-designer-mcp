@@ -23,15 +23,59 @@ from .engine.designer import generate_furniture_spec
 from .engine.cut_optimizer import optimize_cuts as _optimize_cuts
 from .engine.structural_validator import validate_structure as _validate
 from .engine.bom_generator import generate_bom as _generate_bom
+from .engine.spec_validator import validate_spec, validate_cut_parts
 from .engine.freecad_scripts import (
     spec_to_freecad_script,
     exploded_view_script,
     cut_layout_script,
+    techdraw_script as _techdraw_script,
     import_script as _import_script,
     parse_freecad_export as _parse_export,
 )
+from .engine.freecad_client import get_client as _get_freecad_client
 
 logger = logging.getLogger(__name__)
+
+
+def _spec_error_response(spec: dict) -> list[TextContent] | None:
+    """Validate spec and return error response if invalid, None if valid."""
+    errors = validate_spec(spec)
+    if errors:
+        text = "Spec inválido:\n" + "\n".join(f"  - {e}" for e in errors)
+        return [TextContent(type="text", text=text)]
+    return None
+
+
+def _cut_parts_error_response(parts: list[dict]) -> list[TextContent] | None:
+    """Validate cut parts and return error response if invalid, None if valid."""
+    errors = validate_cut_parts(parts)
+    if errors:
+        text = "Parts inválidos para optimize_cuts:\n" + "\n".join(f"  - {e}" for e in errors)
+        return [TextContent(type="text", text=text)]
+    return None
+
+
+def _execute_in_freecad(code: str, description: str) -> list[TextContent]:
+    """Execute a generated script in FreeCAD via XML-RPC and return a summary."""
+    client = _get_freecad_client()
+    result = client.execute_code(code)
+    if result.get("success"):
+        msg = result.get("message", "")
+        # Extract the print() output from the message
+        output = ""
+        if "Output:" in msg:
+            output = msg.split("Output:", 1)[1].strip()
+        elif msg:
+            output = msg.strip()
+        summary = f"{description}\n{output}" if output else description
+        return [TextContent(type="text", text=summary)]
+    else:
+        error = result.get("error", "Error desconocido")
+        return [TextContent(
+            type="text",
+            text=f"Error ejecutando en FreeCAD: {error}",
+        )]
+
 
 mcp = FastMCP(
     "FurnitureDesignerMCP",
@@ -233,6 +277,8 @@ def validate_structure(ctx: Context, spec: dict) -> list[TextContent]:
     Returns:
         Validation report with errors (must fix) and warnings (recommended).
     """
+    if err := _spec_error_response(spec):
+        return err
     try:
         report = _validate(spec)
         return [TextContent(type="text", text=json.dumps(report, indent=2, ensure_ascii=False))]
@@ -277,6 +323,8 @@ def optimize_cuts(
         Optimization result: sheets used, piece positions, waste percentage,
         grain arrows, and a text diagram.
     """
+    if err := _cut_parts_error_response(parts):
+        return err
     try:
         result = _optimize_cuts(
             parts=parts,
@@ -307,6 +355,8 @@ def generate_bom(ctx: Context, spec: dict) -> list[TextContent]:
         BOM with: panels (name, dimensions, material, edge banding),
         hardware (type, qty, reference), and summary.
     """
+    if err := _spec_error_response(spec):
+        return err
     try:
         bom = _generate_bom(spec)
         return [TextContent(type="text", text=json.dumps(bom, indent=2, ensure_ascii=False))]
@@ -331,6 +381,8 @@ def get_assembly_steps(ctx: Context, spec: dict) -> list[TextContent]:
         Ordered list of assembly steps with part references, hardware needed
         per step, and tips.
     """
+    if err := _spec_error_response(spec):
+        return err
     try:
         parts = spec.get("parts", [])
         hardware = spec.get("hardware", [])
@@ -490,24 +542,30 @@ def build_3d_model(
     spec: dict,
     doc_name: str = "Furniture",
 ) -> list[TextContent]:
-    """Generate a FreeCAD Python script that builds the furniture as a 3D model.
+    """Build the furniture as a 3D model in FreeCAD.
 
-    The returned script creates Part::Box objects for each panel, positioned
-    and color-coded by role. Execute it via freecad-mcp's execute_code tool.
+    Creates Part::Box objects for each panel, positioned and color-coded by
+    role, directly in the running FreeCAD instance via XML-RPC.
 
     Args:
         spec: A furniture spec as returned by design_furniture.
         doc_name: Name for the FreeCAD document (default: "Furniture").
 
     Returns:
-        Python code to execute in FreeCAD.
+        Summary of what was built.
     """
+    if err := _spec_error_response(spec):
+        return err
     try:
         code = spec_to_freecad_script(spec, doc_name=doc_name)
-        return [TextContent(type="text", text=code)]
+        n_parts = len(spec.get("parts", []))
+        return _execute_in_freecad(
+            code,
+            f"Modelo 3D construido: {n_parts} paneles en documento '{doc_name}'.",
+        )
     except Exception as e:
         logger.exception("build_3d_model failed")
-        return [TextContent(type="text", text=f"Error generating 3D model script: {e}")]
+        return [TextContent(type="text", text=f"Error building 3D model: {e}")]
 
 
 @mcp.tool()
@@ -517,10 +575,10 @@ def build_exploded_view(
     gap_mm: float = 50,
     doc_name: str = "Exploded",
 ) -> list[TextContent]:
-    """Generate a FreeCAD Python script for an exploded assembly view.
+    """Build an exploded assembly view in FreeCAD.
 
     Panels are separated along their assembly axis to visualize how the
-    furniture comes together. Execute it via freecad-mcp's execute_code tool.
+    furniture comes together. Executed directly in FreeCAD via XML-RPC.
 
     Args:
         spec: A furniture spec as returned by design_furniture.
@@ -528,14 +586,20 @@ def build_exploded_view(
         doc_name: Name for the FreeCAD document (default: "Exploded").
 
     Returns:
-        Python code to execute in FreeCAD.
+        Summary of what was built.
     """
+    if err := _spec_error_response(spec):
+        return err
     try:
         code = exploded_view_script(spec, gap_mm=gap_mm, doc_name=doc_name)
-        return [TextContent(type="text", text=code)]
+        n_parts = len(spec.get("parts", []))
+        return _execute_in_freecad(
+            code,
+            f"Vista explosionada construida: {n_parts} paneles con separación de {gap_mm}mm en documento '{doc_name}'.",
+        )
     except Exception as e:
         logger.exception("build_exploded_view failed")
-        return [TextContent(type="text", text=f"Error generating exploded view script: {e}")]
+        return [TextContent(type="text", text=f"Error building exploded view: {e}")]
 
 
 @mcp.tool()
@@ -544,24 +608,72 @@ def build_cut_diagram(
     cut_result: dict,
     doc_name: str = "CutLayout",
 ) -> list[TextContent]:
-    """Generate a FreeCAD Python script that visualizes the cut optimization layout.
+    """Build a cut layout diagram in FreeCAD.
 
     Creates a top-down view of each sheet with pieces placed according to the
-    cut optimizer output. Execute it via freecad-mcp's execute_code tool.
+    cut optimizer output. Executed directly in FreeCAD via XML-RPC.
 
     Args:
         cut_result: Result from optimize_cuts tool.
         doc_name: Name for the FreeCAD document (default: "CutLayout").
 
     Returns:
-        Python code to execute in FreeCAD.
+        Summary of what was built.
     """
+    if "sheets" not in cut_result or not cut_result.get("sheets"):
+        return [TextContent(
+            type="text",
+            text="cut_result inválido: no tiene 'sheets' o está vacío. "
+                 "Pasa el resultado de optimize_cuts.",
+        )]
     try:
         code = cut_layout_script(cut_result, doc_name=doc_name)
-        return [TextContent(type="text", text=code)]
+        n_sheets = len(cut_result["sheets"])
+        return _execute_in_freecad(
+            code,
+            f"Diagrama de corte construido: {n_sheets} tableros en documento '{doc_name}'.",
+        )
     except Exception as e:
         logger.exception("build_cut_diagram failed")
-        return [TextContent(type="text", text=f"Error generating cut diagram script: {e}")]
+        return [TextContent(type="text", text=f"Error building cut diagram: {e}")]
+
+
+@mcp.tool()
+def build_techdraw(
+    ctx: Context,
+    spec: dict,
+    doc_name: str = "TechDraw",
+) -> list[TextContent]:
+    """Build a TechDraw technical drawing in FreeCAD.
+
+    Produces an A3 landscape sheet with three orthographic views (front, top,
+    right side) of the furniture, auto-scaled to fit. Useful for fabrication
+    documentation and client presentations.
+
+    The script is self-contained — it rebuilds the geometry as a compound,
+    so it does NOT require the 3D model to already exist in FreeCAD.
+
+    Executed directly in FreeCAD via XML-RPC.
+
+    Args:
+        spec: A furniture spec as returned by design_furniture.
+        doc_name: Name for the FreeCAD document (default: "TechDraw").
+
+    Returns:
+        Summary of what was built.
+    """
+    if err := _spec_error_response(spec):
+        return err
+    try:
+        code = _techdraw_script(spec, doc_name=doc_name)
+        n_parts = len(spec.get("parts", []))
+        return _execute_in_freecad(
+            code,
+            f"Plano técnico TechDraw creado: {n_parts} paneles, formato A3 en documento '{doc_name}'.",
+        )
+    except Exception as e:
+        logger.exception("build_techdraw failed")
+        return [TextContent(type="text", text=f"Error building TechDraw: {e}")]
 
 
 # ---------------------------------------------------------------------------
