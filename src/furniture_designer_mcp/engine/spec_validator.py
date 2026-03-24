@@ -14,6 +14,9 @@ VALID_ROLES: set[str] = {
     "kickplate",
     "divider",
     "drawer_front",
+    "drawer_side",
+    "drawer_back",
+    "drawer_bottom",
 }
 
 REQUIRED_PART_FIELDS: set[str] = {

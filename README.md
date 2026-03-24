@@ -52,10 +52,14 @@ validate      generate_bom    optimize_cuts
 - **Divisiones automáticas**: si el ancho excede el tramo máximo del material, se agrega división vertical automáticamente.
 - **Muebles altos (>180cm)**: el validador genera warning de anclaje a pared.
 - **Modo `brief`**: las knowledge tools aceptan `brief=true` para respuestas compactas (ahorro de 34-84% en tokens). Recomendado para agentes con ventana de contexto limitada.
-- **FreeCAD**: los scripts generan componentes `App::Part` con propiedades (`Material`, `Role`, `Thickness_mm`, `RealDimensions`, `EdgeBanding`) y grupos por función (`Estructura`, `Repisas`, `Puertas`, `Respaldo`). Requiere FreeCAD 0.21+ con el addon MCP.
+- **FreeCAD**: las tools de exportación ejecutan directamente en FreeCAD via XML-RPC (puerto 9875), retornando solo un resumen compacto. Los componentes usan `App::Part` con propiedades (`PanelMaterial`, `Role`, `Thickness_mm`, `RealDimensions`, `EdgeBanding`) y grupos por función (`Estructura`, `Repisas`, `Puertas`, `Respaldo`, `Cajones`). Requiere FreeCAD 0.21+ con el addon MCP.
 - Los **labels de paneles** en FreeCAD incluyen dimensiones en mm (ej: "Lateral — side_left (590×2215×18mm)")
 - Todas las tools validan el spec de entrada y retornan errores claros si el formato es incorrecto
 - El optimizador de cortes genera **sugerencias accionables** cuando una pieza no cabe en el tablero
+- **Auto-relajación de grano**: si una pieza no cabe con restricción de grano, se relaja automáticamente a `none` con aviso
+- **Cajones completos**: `design_furniture` genera caja de cajón (laterales + trasera + fondo + frente) con correderas telescópicas
+- **Respuestas compactas** (`compact=true`): las tools principales retornan resumen legible + JSON (reduce consumo de contexto)
+- **Hot-reload**: `reload_engine` recarga módulos del engine sin reiniciar el servidor MCP
 
 ## Instalación
 
@@ -76,13 +80,13 @@ O en `.mcp.json`:
 }
 ```
 
-## Herramientas (16 tools)
+## Herramientas (17 tools)
 
 ### Diseño
 
 | Tool | Descripción |
 |---|---|
-| `design_furniture` | Genera spec completa con paneles, hardware, posiciones y notas estructurales |
+| `design_furniture` | Genera spec completa con paneles, hardware, posiciones y notas estructurales. Soporta cajones (`num_drawers` en options) |
 
 ### Conocimiento
 
@@ -105,14 +109,14 @@ Todas las knowledge tools aceptan `brief=true` para respuestas compactas.
 | `optimize_cuts` | Optimización de corte 2D en tableros estándar con soporte de veta y kerf |
 | `get_assembly_steps` | Instrucciones de ensamble paso a paso en español |
 
-### FreeCAD — Exportar (requiere freecad-mcp)
+### FreeCAD — Exportar (requiere FreeCAD con RPC server)
 
 | Tool | Descripción |
 |---|---|
-| `build_3d_model` | Script para modelo 3D con componentes, grupos y propiedades |
-| `build_exploded_view` | Script para vista explosionada |
-| `build_cut_diagram` | Script para diagrama de corte (vista superior) |
-| `build_techdraw` | Script para plano técnico TechDraw con vistas ortogonales |
+| `build_3d_model` | Construye modelo 3D directamente en FreeCAD via XML-RPC |
+| `build_exploded_view` | Construye vista explosionada directamente en FreeCAD |
+| `build_cut_diagram` | Construye diagrama de corte directamente en FreeCAD |
+| `build_techdraw` | Construye plano técnico TechDraw directamente en FreeCAD |
 
 ### FreeCAD — Importar (requiere freecad-mcp)
 
@@ -120,6 +124,12 @@ Todas las knowledge tools aceptan `brief=true` para respuestas compactas.
 |---|---|
 | `build_import_script` | Script para extraer paneles de un documento FreeCAD existente |
 | `parse_freecad_import` | Parsear salida del script de importación a spec de mueble |
+
+### Desarrollo
+
+| Tool | Descripción |
+|---|---|
+| `reload_engine` | Recarga todos los módulos del engine sin reiniciar el servidor MCP |
 
 ## Tipos de mueble soportados
 

@@ -68,6 +68,9 @@ def optimize_cuts(
             }
             pieces.append(piece)
 
+    # Pre-validate: auto-relax grain for pieces that can't fit otherwise
+    grain_warnings = _pre_validate_pieces(pieces, sheet_width, sheet_height)
+
     # Sort by largest dimension descending (BHFD heuristic)
     pieces.sort(key=lambda p: max(p["width"], p["height"]), reverse=True)
 
@@ -99,6 +102,16 @@ def optimize_cuts(
     total_used_area = sum(p["width"] * p["height"] for p in pieces)
     waste_pct = round((1 - total_used_area / total_sheet_area) * 100, 1) if total_sheet_area else 0
 
+    # Add tight-fit warnings
+    for piece in pieces:
+        pw, ph = piece["width"], piece["height"]
+        piece_max = max(pw, ph)
+        if piece_max > 0.9 * max(sheet_width, sheet_height):
+            grain_warnings.append(
+                f"Pieza '{piece['id']}' ({pw}x{ph}mm): ajuste apretado, "
+                f"dimensión mayor al 90% del tablero."
+            )
+
     # Build text diagram
     diagrams = []
     for sheet in sheets:
@@ -111,6 +124,7 @@ def optimize_cuts(
         "grain_direction": grain_direction,
         "waste_percentage": waste_pct,
         "total_pieces": len(pieces),
+        "warnings": grain_warnings,
         "sheets": [],
         "text_diagrams": diagrams,
     }
@@ -207,6 +221,51 @@ def _build_fit_error(piece, sheet_width, sheet_height):
         lines.append(f"  - {s}")
 
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Pre-validation: automatic grain relaxation
+# ---------------------------------------------------------------------------
+
+def _pre_validate_pieces(pieces, sheet_width, sheet_height):
+    """Check pieces for grain issues and auto-relax when needed.
+
+    Returns a list of warning strings for pieces whose grain was relaxed.
+    """
+    warnings = []
+    sheet_max = max(sheet_width, sheet_height)
+    sheet_min = min(sheet_width, sheet_height)
+
+    for piece in pieces:
+        pw, ph = piece["width"], piece["height"]
+        grain = piece["grain"]
+        piece_max = max(pw, ph)
+        piece_min = min(pw, ph)
+
+        # Skip if piece can't fit at all (main loop will handle error)
+        if piece_max > sheet_max or piece_min > sheet_min:
+            continue
+
+        if grain == "length":
+            # Grain along piece width → must keep width horizontal on sheet
+            if pw > sheet_width or ph > sheet_height:
+                piece["grain"] = "none"
+                warnings.append(
+                    f"Pieza '{piece['id']}' ({pw}x{ph}mm): grano relajado de "
+                    f"'length' a 'none' (no cabe con restricción de grano en "
+                    f"tablero {sheet_width}x{sheet_height}mm)."
+                )
+        elif grain == "width":
+            # Grain along piece height → rotated so grain = horizontal
+            if ph > sheet_width or pw > sheet_height:
+                piece["grain"] = "none"
+                warnings.append(
+                    f"Pieza '{piece['id']}' ({pw}x{ph}mm): grano relajado de "
+                    f"'width' a 'none' (no cabe con restricción de grano en "
+                    f"tablero {sheet_width}x{sheet_height}mm)."
+                )
+
+    return warnings
 
 
 # ---------------------------------------------------------------------------

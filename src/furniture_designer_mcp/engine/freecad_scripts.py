@@ -32,6 +32,9 @@ _COLORS = {
     "kickplate": (0.50, 0.50, 0.50, 1.0),
     "divider": (0.90, 0.72, 0.40, 1.0),
     "drawer_front": (0.60, 0.75, 0.90, 1.0),
+    "drawer_side": (0.50, 0.65, 0.85, 1.0),
+    "drawer_back": (0.45, 0.60, 0.80, 1.0),
+    "drawer_bottom": (0.55, 0.70, 0.88, 1.0),
 }
 
 _DEFAULT_COLOR = (0.80, 0.70, 0.55, 1.0)
@@ -49,6 +52,9 @@ _ROLE_GROUPS = {
     "shelf": "Repisas",
     "door": "Puertas",
     "drawer_front": "Cajones",
+    "drawer_side": "Cajones",
+    "drawer_back": "Cajones",
+    "drawer_bottom": "Cajones",
 }
 
 # -- Descriptive labels by role --
@@ -64,6 +70,9 @@ _ROLE_LABELS = {
     "kickplate": "Zócalo",
     "divider": "División vertical",
     "drawer_front": "Frente de cajón",
+    "drawer_side": "Lateral de cajón",
+    "drawer_back": "Trasera de cajón",
+    "drawer_bottom": "Fondo de cajón",
 }
 
 
@@ -98,6 +107,15 @@ def _box_dims(part: dict) -> tuple[float, float, float]:
         # Vertical panel at front
         # wide in X, thin in Y, tall in Z
         return (w, t, h)
+    elif role == "drawer_side":
+        # Vertical panel perpendicular to X (like side but for drawer)
+        return (t, w, h)
+    elif role == "drawer_back":
+        # Vertical panel perpendicular to Y (like back but for drawer)
+        return (w, t, h)
+    elif role == "drawer_bottom":
+        # Horizontal panel (like shelf but for drawer)
+        return (w, h, t)
     elif role in ("rail",):
         # Horizontal beam
         # wide in X, thin in Y, height in Z
@@ -289,6 +307,9 @@ def exploded_view_script(spec: dict, gap_mm: float = 50, doc_name: str = "Explod
         "rail": (0, 0, 0.2),        # rails float slightly
         "kickplate": (0, 0, -1.5),  # kickplate pushes down
         "drawer_front": (0, -1.5, 0),
+        "drawer_side": (0, -1.5, 0),
+        "drawer_back": (0, -1.5, 0),
+        "drawer_bottom": (0, -1.5, 0),
         "floor": (0, 0, -1.0),
     }
 
@@ -555,6 +576,9 @@ _REVERSE_DIMS = {
     "back":        ("Length", "Height", "Width"),     # thin in Y
     "door":        ("Length", "Height", "Width"),     # thin in Y
     "drawer_front":("Length", "Height", "Width"),     # thin in Y
+    "drawer_side": ("Width", "Height", "Length"),     # thin in X
+    "drawer_back": ("Length", "Height", "Width"),     # thin in Y
+    "drawer_bottom":("Length", "Width", "Height"),    # thin in Z
     "rail":        ("Length", "Height", "Width"),     # thin in Y
     "kickplate":   ("Length", "Height", "Width"),     # thin in Y
 }

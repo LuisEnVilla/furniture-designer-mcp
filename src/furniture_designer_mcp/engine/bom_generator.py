@@ -25,11 +25,11 @@ def generate_bom(spec: dict) -> dict:
             "width_mm": p["width_mm"],
             "height_mm": p["height_mm"],
             "thickness_mm": p["thickness_mm"],
-            "material": "mdf_3" if p["role"] == "back" else material,
+            "material": "mdf_3" if p["role"] in ("back", "drawer_bottom") else material,
             "edge_banding": p.get("edge_banding", []),
             "qty": 1,
         }
-        if p["role"] == "back":
+        if p["role"] in ("back", "drawer_bottom"):
             back_panels.append(entry)
         else:
             panels.append(entry)

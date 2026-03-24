@@ -77,6 +77,76 @@ def _execute_in_freecad(code: str, description: str) -> list[TextContent]:
         )]
 
 
+def _compact_spec_summary(spec: dict) -> str:
+    """Compact summary of a furniture spec."""
+    dims = spec.get("dimensions_cm", {})
+    parts = spec.get("parts", [])
+    hw = spec.get("hardware", [])
+    notes = spec.get("notes", [])
+
+    # Count parts by role
+    from collections import Counter
+    roles = Counter(p.get("role", "?") for p in parts)
+    role_str = ", ".join(f"{v}× {k}" for k, v in roles.most_common())
+
+    lines = [
+        f"Diseño: {spec.get('furniture_type', '?')} "
+        f"{dims.get('width', '?')}×{dims.get('height', '?')}×{dims.get('depth', '?')}cm "
+        f"({spec.get('material', '?')})",
+        f"Partes: {len(parts)} ({role_str})",
+        f"Hardware: {len(hw)} items",
+    ]
+    if notes:
+        lines.append("Notas: " + " | ".join(notes))
+    return "\n".join(lines)
+
+
+def _compact_cut_summary(result: dict) -> str:
+    """Compact summary of cut optimization."""
+    lines = [
+        f"Corte optimizado: {result.get('sheets_needed', '?')} tableros, "
+        f"{result.get('waste_percentage', '?')}% desperdicio, "
+        f"{result.get('total_pieces', '?')} piezas",
+    ]
+    warnings = result.get("warnings", [])
+    if warnings:
+        lines.append("Avisos:")
+        for w in warnings:
+            lines.append(f"  ⚠ {w}")
+    # Include text diagrams (already compact)
+    for diag in result.get("text_diagrams", []):
+        lines.append(diag)
+    return "\n".join(lines)
+
+
+def _compact_bom_summary(bom: dict) -> str:
+    """Compact summary of BOM."""
+    s = bom.get("summary", {})
+    lines = [
+        f"BOM: {s.get('total_pieces', '?')} piezas "
+        f"({s.get('total_structural_panels', '?')} estructurales + "
+        f"{s.get('total_back_panels', '?')} respaldos/fondos)",
+        f"Material: {s.get('structural_material', '?')} ({s.get('structural_thickness_mm', '?')}mm)",
+        f"Canteado: {s.get('edge_banding_total_meters', 0)}m total",
+        f"Hardware: {s.get('hardware_items', '?')} items",
+    ]
+    return "\n".join(lines)
+
+
+def _compact_assembly_summary(result: dict) -> str:
+    """Compact summary of assembly steps."""
+    steps = result.get("steps", [])
+    lines = [f"Ensamble: {len(steps)} pasos"]
+    for step in steps:
+        lines.append(f"  {step['step']}. {step['action']}")
+    tips = result.get("general_tips", [])
+    if tips:
+        lines.append("Tips generales:")
+        for tip in tips:
+            lines.append(f"  • {tip}")
+    return "\n".join(lines)
+
+
 mcp = FastMCP(
     "FurnitureDesignerMCP",
     instructions=(
@@ -223,6 +293,7 @@ def design_furniture(
     depth: float,
     material: str = "melamine_16",
     options: dict | None = None,
+    compact: bool = True,
 ) -> list[TextContent]:
     """Design a complete furniture piece with standards applied.
 
@@ -239,6 +310,8 @@ def design_furniture(
         material: Material key (default: melamine_16)
         options: Optional overrides — e.g. {"num_shelves": 3, "has_drawers": true,
             "door_type": "double", "kickplate_height": 10}
+        compact: If true (default), return a compact summary + full JSON.
+            If false, return only the full pretty-printed JSON.
 
     Returns:
         Complete furniture spec (JSON) with parts list, positions, hardware,
@@ -253,6 +326,12 @@ def design_furniture(
             material=material,
             options=options or {},
         )
+        if compact:
+            summary = _compact_spec_summary(spec)
+            return [
+                TextContent(type="text", text=summary),
+                TextContent(type="text", text=json.dumps(spec, ensure_ascii=False)),
+            ]
         return [TextContent(type="text", text=json.dumps(spec, indent=2, ensure_ascii=False))]
     except Exception as e:
         logger.exception("design_furniture failed")
@@ -300,6 +379,7 @@ def optimize_cuts(
     sheet_height: float = 1220,
     blade_kerf: float = 3,
     grain_direction: str = "auto",
+    compact: bool = True,
 ) -> list[TextContent]:
     """Optimize panel cuts on standard sheets using guillotine algorithm.
 
@@ -318,6 +398,8 @@ def optimize_cuts(
             "auto" (default) = use each piece's grain/can_rotate fields.
             "length" = all pieces have grain along their width.
             "none" = ignore grain, free rotation.
+        compact: If true (default), return a compact summary + full JSON.
+            If false, return only the full pretty-printed JSON.
 
     Returns:
         Optimization result: sheets used, piece positions, waste percentage,
@@ -333,6 +415,12 @@ def optimize_cuts(
             blade_kerf=blade_kerf,
             grain_direction=grain_direction,
         )
+        if compact:
+            summary = _compact_cut_summary(result)
+            return [
+                TextContent(type="text", text=summary),
+                TextContent(type="text", text=json.dumps(result, ensure_ascii=False)),
+            ]
         return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
     except Exception as e:
         logger.exception("optimize_cuts failed")
@@ -345,11 +433,13 @@ def optimize_cuts(
 
 
 @mcp.tool()
-def generate_bom(ctx: Context, spec: dict) -> list[TextContent]:
+def generate_bom(ctx: Context, spec: dict, compact: bool = True) -> list[TextContent]:
     """Generate a Bill of Materials from a furniture spec.
 
     Args:
         spec: A furniture spec as returned by design_furniture.
+        compact: If true (default), return a compact summary + full JSON.
+            If false, return only the full pretty-printed JSON.
 
     Returns:
         BOM with: panels (name, dimensions, material, edge banding),
@@ -359,6 +449,12 @@ def generate_bom(ctx: Context, spec: dict) -> list[TextContent]:
         return err
     try:
         bom = _generate_bom(spec)
+        if compact:
+            summary = _compact_bom_summary(bom)
+            return [
+                TextContent(type="text", text=summary),
+                TextContent(type="text", text=json.dumps(bom, ensure_ascii=False)),
+            ]
         return [TextContent(type="text", text=json.dumps(bom, indent=2, ensure_ascii=False))]
     except Exception as e:
         logger.exception("generate_bom failed")
@@ -371,11 +467,13 @@ def generate_bom(ctx: Context, spec: dict) -> list[TextContent]:
 
 
 @mcp.tool()
-def get_assembly_steps(ctx: Context, spec: dict) -> list[TextContent]:
+def get_assembly_steps(ctx: Context, spec: dict, compact: bool = True) -> list[TextContent]:
     """Generate step-by-step assembly instructions for a furniture spec.
 
     Args:
         spec: A furniture spec as returned by design_furniture.
+        compact: If true (default), return a compact summary + full JSON.
+            If false, return only the full pretty-printed JSON.
 
     Returns:
         Ordered list of assembly steps with part references, hardware needed
@@ -400,7 +498,11 @@ def get_assembly_steps(ctx: Context, spec: dict) -> list[TextContent]:
         rails = [p for p in parts if p.get("role") == "rail"]
         dividers = [p for p in parts if p.get("role") == "divider"]
         doors = [p for p in parts if p.get("role") == "door"]
-        drawers = [p for p in parts if p.get("role") == "drawer_front"]
+        drawer_fronts = [p for p in parts if p.get("role") == "drawer_front"]
+        drawer_sides = [p for p in parts if p.get("role") == "drawer_side"]
+        drawer_backs = [p for p in parts if p.get("role") == "drawer_back"]
+        drawer_bottoms = [p for p in parts if p.get("role") == "drawer_bottom"]
+        has_drawer_boxes = bool(drawer_sides or drawer_backs or drawer_bottoms)
         kickplates = [p for p in parts if p.get("role") == "kickplate"]
 
         # Step 1: Bottom to sides
@@ -503,15 +605,44 @@ def get_assembly_steps(ctx: Context, spec: dict) -> list[TextContent]:
             })
 
         # Step 9: Drawers
-        for drawer in drawers:
+        for drawer in drawer_fronts:
+            # Extract drawer group ID (e.g., "drawer_1" from "drawer_1_front")
+            drawer_id = drawer["id"].replace("_front", "")
             step_num += 1
-            steps.append({
-                "step": step_num,
-                "action": f"Instalar cajón '{drawer['id']}'",
-                "parts": [drawer["id"]],
-                "hardware": "Correderas telescópicas (par)",
-                "tip": "Montar correderas primero en laterales del mueble, luego en cajón."
-            })
+            if has_drawer_boxes:
+                steps.append({
+                    "step": step_num,
+                    "action": f"Montar correderas para cajón '{drawer_id}'",
+                    "parts": [],
+                    "hardware": "Correderas telescópicas (par) — fijar al lateral del mueble",
+                    "tip": "Montar a la altura indicada en el plano. Verificar nivel."
+                })
+                step_num += 1
+                box_parts = [p["id"] for p in drawer_sides + drawer_backs + drawer_bottoms
+                             if p["id"].startswith(drawer_id)]
+                steps.append({
+                    "step": step_num,
+                    "action": f"Armar caja de cajón '{drawer_id}' (fondo → laterales → trasera)",
+                    "parts": box_parts,
+                    "hardware": "Tornillos 4x30mm o clavos",
+                    "tip": "Primero el fondo, luego laterales, por último la trasera. Verificar escuadra."
+                })
+                step_num += 1
+                steps.append({
+                    "step": step_num,
+                    "action": f"Fijar frente '{drawer['id']}' a la caja",
+                    "parts": [drawer["id"]],
+                    "hardware": "Tornillos desde interior de la caja",
+                    "tip": "Alinear con holgura uniforme respecto a paneles adyacentes."
+                })
+            else:
+                steps.append({
+                    "step": step_num,
+                    "action": f"Instalar cajón '{drawer['id']}'",
+                    "parts": [drawer["id"]],
+                    "hardware": "Correderas telescópicas (par)",
+                    "tip": "Montar correderas primero en laterales del mueble, luego en cajón."
+                })
 
         result = {
             "furniture_type": furniture_type,
@@ -525,6 +656,12 @@ def get_assembly_steps(ctx: Context, spec: dict) -> list[TextContent]:
                 "Las puertas y cajones se montan al final.",
             ]
         }
+        if compact:
+            summary = _compact_assembly_summary(result)
+            return [
+                TextContent(type="text", text=summary),
+                TextContent(type="text", text=json.dumps(result, ensure_ascii=False)),
+            ]
         return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
     except Exception as e:
         logger.exception("get_assembly_steps failed")
@@ -742,6 +879,82 @@ def parse_freecad_import(
     except Exception as e:
         logger.exception("parse_freecad_import failed")
         return [TextContent(type="text", text=f"Error parsing FreeCAD import: {e}")]
+
+
+# ---------------------------------------------------------------------------
+# Hot-reload tool
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def reload_engine(ctx: Context) -> list[TextContent]:
+    """Reload all engine modules to pick up code changes during development.
+
+    Use after modifying engine files (designer.py, cut_optimizer.py, etc.)
+    without restarting the MCP server.
+
+    Returns:
+        List of reloaded modules.
+    """
+    import importlib
+    from .engine import (
+        designer as _mod_designer,
+        cut_optimizer as _mod_cut_optimizer,
+        structural_validator as _mod_structural_validator,
+        bom_generator as _mod_bom_generator,
+        spec_validator as _mod_spec_validator,
+        freecad_scripts as _mod_freecad_scripts,
+        freecad_client as _mod_freecad_client,
+    )
+
+    module_list = [
+        _mod_spec_validator,
+        _mod_designer,
+        _mod_cut_optimizer,
+        _mod_structural_validator,
+        _mod_bom_generator,
+        _mod_freecad_scripts,
+        _mod_freecad_client,
+    ]
+
+    reloaded_names = []
+    for mod in module_list:
+        importlib.reload(mod)
+        reloaded_names.append(mod.__name__.split(".")[-1])
+
+    # Rebind module-level references used by other tools
+    global generate_furniture_spec
+    generate_furniture_spec = _mod_designer.generate_furniture_spec
+
+    global _optimize_cuts
+    _optimize_cuts = _mod_cut_optimizer.optimize_cuts
+
+    global _validate
+    _validate = _mod_structural_validator.validate_structure
+
+    global _generate_bom
+    _generate_bom = _mod_bom_generator.generate_bom
+
+    global validate_spec, validate_cut_parts
+    validate_spec = _mod_spec_validator.validate_spec
+    validate_cut_parts = _mod_spec_validator.validate_cut_parts
+
+    global spec_to_freecad_script, exploded_view_script, cut_layout_script
+    global _techdraw_script, _import_script, _parse_export
+    spec_to_freecad_script = _mod_freecad_scripts.spec_to_freecad_script
+    exploded_view_script = _mod_freecad_scripts.exploded_view_script
+    cut_layout_script = _mod_freecad_scripts.cut_layout_script
+    _techdraw_script = _mod_freecad_scripts.techdraw_script
+    _import_script = _mod_freecad_scripts.import_script
+    _parse_export = _mod_freecad_scripts.parse_freecad_export
+
+    global _get_freecad_client
+    _get_freecad_client = _mod_freecad_client.get_client
+
+    return [TextContent(
+        type="text",
+        text=f"Módulos recargados: {', '.join(reloaded_names)}",
+    )]
 
 
 # ---------------------------------------------------------------------------

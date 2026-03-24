@@ -144,6 +144,31 @@ def _build_kitchen_base(W, H, D, t, opts, standards, mat):
         parts.append(_panel("door", "door", door_w, door_h, t, pos=[0, 0, kickplate_h]))
         hardware.append(_hinge_set("door", door_h))
 
+    # Drawers
+    num_drawers = opts.get("num_drawers", 0)
+    if num_drawers > 0:
+        drawer_front_h = opts.get("drawer_height", 140)  # mm, visible front
+        drawer_box_h = 110  # mm, internal box height
+        drawer_gap = 3  # mm between drawers
+        drawer_start_z = kickplate_h + t  # Start above bottom panel
+
+        for i in range(num_drawers):
+            d_z = drawer_start_z + i * (drawer_front_h + drawer_gap)
+            d_parts, d_hw = _build_drawer_box(
+                drawer_id=f"drawer_{i+1}",
+                section_x=t,
+                section_inner_w=section_w,
+                drawer_z=d_z,
+                depth=D,
+                drawer_h=drawer_box_h,
+                front_h=drawer_front_h,
+                t=t,
+            )
+            parts.extend(d_parts)
+            hardware.extend(d_hw)
+
+        notes.append(f"{num_drawers} cajón(es) con caja completa (laterales + trasera + fondo).")
+
     # Connectors
     hardware.append({"type": "confirmat_7x50", "usage": "panel joints", "estimated_qty": _estimate_confirmats(parts)})
     hardware.append({"type": "shelf_pin_5mm", "qty": num_shelves * 4, "usage": "adjustable shelves"})
@@ -222,6 +247,31 @@ def _build_box_cabinet(W, H, D, t, opts, standards, mat, has_kickplate=False):
         else:
             parts.append(_panel("door", "door", W - door_gap, body_h - door_gap, t, pos=[0, 0, kickplate_h]))
             hardware.append(_hinge_set("door", body_h))
+
+    # Drawers
+    num_drawers = opts.get("num_drawers", 0)
+    if num_drawers > 0:
+        drawer_front_h = opts.get("drawer_height", 140)  # mm, visible front
+        drawer_box_h = 110  # mm, internal box height
+        drawer_gap = 3  # mm between drawers
+        drawer_start_z = kickplate_h + t  # Start above bottom panel
+
+        for i in range(num_drawers):
+            d_z = drawer_start_z + i * (drawer_front_h + drawer_gap)
+            d_parts, d_hw = _build_drawer_box(
+                drawer_id=f"drawer_{i+1}",
+                section_x=t,
+                section_inner_w=section_w,
+                drawer_z=d_z,
+                depth=D,
+                drawer_h=drawer_box_h,
+                front_h=drawer_front_h,
+                t=t,
+            )
+            parts.extend(d_parts)
+            hardware.extend(d_hw)
+
+        notes.append(f"{num_drawers} cajón(es) con caja completa (laterales + trasera + fondo).")
 
     # Hardware
     hardware.append({"type": "confirmat_7x50", "usage": "panel joints", "estimated_qty": _estimate_confirmats(parts)})
@@ -306,6 +356,8 @@ def _panel(id: str, role: str, width: float, height: float, thickness: float,
         p["edge_banding"] = ["front"]
     elif role in ("side", "panel_vertical"):
         p["edge_banding"] = ["front"]
+    elif role == "drawer_front":
+        p["edge_banding"] = ["top", "bottom", "left", "right"]
     return p
 
 
@@ -333,3 +385,53 @@ def _estimate_confirmats(parts: list[dict]) -> int:
     structural = [p for p in parts if p["role"] in ("side", "bottom", "top_panel", "divider", "rail")]
     # ~4 confirmats per structural joint, ~2 joints per structural part
     return len(structural) * 4
+
+
+def _build_drawer_box(
+    drawer_id: str,
+    section_x: float,
+    section_inner_w: float,
+    drawer_z: float,
+    depth: float,
+    drawer_h: float = 110,
+    front_h: float = 140,
+    t: float = 16,
+    slide_clearance: float = 13,
+    bottom_t: float = 3,
+) -> tuple[list[dict], list[dict]]:
+    """Generate all 5 parts + hardware for one drawer box.
+
+    Returns (parts, hardware).
+    """
+    box_outer_w = section_inner_w - 2 * slide_clearance
+    box_inner_w = box_outer_w - 2 * t
+    box_depth = depth - t - 20  # depth minus front thickness minus back clearance
+
+    parts = [
+        # Visible front panel (full section width)
+        _panel(f"{drawer_id}_front", "drawer_front", section_inner_w, front_h, t,
+               pos=[section_x, 0, drawer_z]),
+        # Left side
+        _panel(f"{drawer_id}_side_l", "drawer_side", box_depth, drawer_h, t,
+               pos=[section_x + slide_clearance, t, drawer_z + bottom_t]),
+        # Right side
+        _panel(f"{drawer_id}_side_r", "drawer_side", box_depth, drawer_h, t,
+               pos=[section_x + slide_clearance + t + box_inner_w, t, drawer_z + bottom_t]),
+        # Back
+        _panel(f"{drawer_id}_back", "drawer_back", box_inner_w, drawer_h, t,
+               pos=[section_x + slide_clearance + t, box_depth, drawer_z + bottom_t]),
+        # Bottom (thin panel)
+        _panel(f"{drawer_id}_bottom", "drawer_bottom", box_outer_w, box_depth, bottom_t,
+               pos=[section_x + slide_clearance, t, drawer_z]),
+    ]
+
+    hardware = [
+        {
+            "type": "telescopic_slide",
+            "drawer": drawer_id,
+            "qty": 1,
+            "description": "Par de correderas telescópicas",
+        },
+    ]
+
+    return parts, hardware
