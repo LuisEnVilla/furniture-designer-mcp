@@ -33,6 +33,7 @@ from .engine.freecad_scripts import (
     parse_freecad_export as _parse_export,
 )
 from .engine.freecad_client import get_client as _get_freecad_client
+from .engine.report_generator import generate_design_report as _generate_report
 
 logger = logging.getLogger(__name__)
 
@@ -882,6 +883,55 @@ def parse_freecad_import(
 
 
 # ---------------------------------------------------------------------------
+# Design report tool
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def update_design_report(
+    ctx: Context,
+    spec: dict,
+    comment: str = "",
+    iteration_name: str = "",
+    output_path: str | None = None,
+) -> list[TextContent]:
+    """Generate or update an interactive HTML design report.
+
+    Creates a self-contained HTML file with 3D visualization (Three.js),
+    schematic blueprint aesthetic, iteration comparison slider, and
+    clickable panels with dimensions.
+
+    If the output file already exists, appends a new iteration preserving
+    the full design history.
+
+    Args:
+        spec: A furniture spec as returned by design_furniture.
+        comment: Description of this iteration's changes (e.g. "Added drawer").
+        iteration_name: Label for this version (e.g. "v2"). Auto-generated if omitted.
+        output_path: Path for the HTML file. Defaults to ./design_report.html.
+
+    Returns:
+        Path to the generated HTML report file.
+    """
+    if err := _spec_error_response(spec):
+        return err
+    try:
+        path = _generate_report(
+            spec=spec,
+            comment=comment,
+            iteration_name=iteration_name,
+            output_path=output_path,
+        )
+        return [TextContent(
+            type="text",
+            text=f"Reporte de diseño actualizado: {path}",
+        )]
+    except Exception as e:
+        logger.exception("update_design_report failed")
+        return [TextContent(type="text", text=f"Error generating report: {e}")]
+
+
+# ---------------------------------------------------------------------------
 # Hot-reload tool
 # ---------------------------------------------------------------------------
 
@@ -905,6 +955,7 @@ def reload_engine(ctx: Context) -> list[TextContent]:
         spec_validator as _mod_spec_validator,
         freecad_scripts as _mod_freecad_scripts,
         freecad_client as _mod_freecad_client,
+        report_generator as _mod_report_generator,
     )
 
     module_list = [
@@ -915,6 +966,7 @@ def reload_engine(ctx: Context) -> list[TextContent]:
         _mod_bom_generator,
         _mod_freecad_scripts,
         _mod_freecad_client,
+        _mod_report_generator,
     ]
 
     reloaded_names = []
@@ -950,6 +1002,9 @@ def reload_engine(ctx: Context) -> list[TextContent]:
 
     global _get_freecad_client
     _get_freecad_client = _mod_freecad_client.get_client
+
+    global _generate_report
+    _generate_report = _mod_report_generator.generate_design_report
 
     return [TextContent(
         type="text",

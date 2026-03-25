@@ -80,7 +80,7 @@ O en `.mcp.json`:
 }
 ```
 
-## Herramientas (17 tools)
+## Herramientas (18 tools)
 
 ### Diseño
 
@@ -124,6 +124,12 @@ Todas las knowledge tools aceptan `brief=true` para respuestas compactas.
 |---|---|
 | `build_import_script` | Script para extraer paneles de un documento FreeCAD existente |
 | `parse_freecad_import` | Parsear salida del script de importación a spec de mueble |
+
+### Reporte de diseño
+
+| Tool | Descripción |
+|---|---|
+| `update_design_report` | Genera/actualiza reporte HTML interactivo con viewer 3D, historial de iteraciones |
 
 ### Desarrollo
 
