@@ -1,73 +1,48 @@
 # furniture-designer-mcp
 
-MCP Server para diseño profesional de muebles de melamina y madera. Genera especificaciones completas, valida estructura, optimiza cortes, produce listas de materiales y genera scripts 3D para FreeCAD.
+> **v0.1.0** — Servidor MCP para diseño profesional de muebles
 
-## Resumen ejecutivo
+Servidor [Model Context Protocol](https://modelcontextprotocol.io/) que convierte dimensiones y tipo de mueble en un paquete completo listo para fabricación: especificación técnica, validación estructural, optimización de cortes, lista de materiales, instrucciones de ensamble, reporte HTML interactivo con viewer 3D, y exportación opcional a FreeCAD.
 
-Este servidor MCP convierte dimensiones y tipo de mueble en un paquete completo listo para fabricación:
+<!-- ![Reporte HTML interactivo — vista Diseño](docs/screenshots/report-design-page.png) -->
+
+## Flujo general
 
 ```
-Entrada: "closet 120x240x60 en melamina 16mm"
-                    ↓
-        ┌───────────────────────┐
-        │   design_furniture    │  → Spec completa con paneles, posiciones, hardware
-        └───────────┬───────────┘
-                    ↓
-    ┌───────────────┼───────────────┐
-    ↓               ↓               ↓
+"closet 180x240x60 en melamina 18mm, 2 secciones"
+                    |
+        +-----------------------+
+        |   design_furniture    |  -> Spec: paneles, posiciones, hardware, secciones
+        +-----------+-----------+
+                    |
+    +---------------+---------------+
+    |               |               |
 validate      generate_bom    optimize_cuts
-    ↓               ↓               ↓
-0 errores     12 paneles       3 tableros
-0 warnings    26 confirmats    38% desperdicio
-              6.2m cantos      veta alineada
-                    ↓
+    |               |               |
+0 errores     18 paneles       3 tableros
+1 warning     34 confirmats    32% desperdicio
+              8.4m cantos      veta alineada
+                    |
             get_assembly_steps
-                    ↓
-            11 pasos ordenados
-            con tornillería por paso
+                    |
+            14 pasos ordenados
+            con tornilleria por paso
+                    |
+        update_design_report
+                    |
+        Reporte HTML interactivo
+        http://localhost:8432/closet-dormitorio
 ```
 
-### Resultados que produce
+## Instalacion
 
-| Herramienta | Resultado |
-|---|---|
-| `design_furniture` | Spec JSON con cada panel (dimensiones en mm, posición XYZ, rol, canto, material) |
-| `validate_structure` | Reporte de errores (deben corregirse) y warnings (recomendados) contra 10 reglas estructurales |
-| `generate_bom` | Lista agrupada de paneles, herrajes, cantos en metros, resumen de compra |
-| `optimize_cuts` | Layout de corte por tablero con posiciones, rotación, dirección de veta, % desperdicio y diagrama ASCII |
-| `get_assembly_steps` | Pasos ordenados con referencia a piezas, tipo de tornillo/fijación y tips por paso |
-| `get_assembly_specs` | Especificaciones detalladas de ensamble: tipos de unión, adhesivos, pre-taladrado por material |
-| `build_3d_model` | Script Python para FreeCAD con componentes App::Part, grupos por rol y propiedades de material |
-| `build_exploded_view` | Script para vista explosionada con separación por eje de ensamble |
-| `build_cut_diagram` | Script para visualizar layout de corte en FreeCAD (vista superior) |
-| `build_import_script` | Script para leer paneles de un documento FreeCAD existente |
-| `parse_freecad_import` | Reconstruir spec desde la salida del script de importación |
-
-### Consideraciones
-
-- **Dimensiones**: la entrada es en **cm**, la salida en **mm** (estándar de fabricación).
-- **Veta**: el optimizador de cortes soporta `grain="length"` para mantener la dirección de veta consistente en melaminas con textura. Esto restringe la rotación de piezas y puede aumentar el número de tableros necesarios.
-- **Kerf**: el desbaste de la sierra (3mm default) se descuenta en cada corte. Ajustable según la hoja utilizada.
-- **Back panels**: siempre MDF 3mm por convención. El validador genera error si falta.
-- **Divisiones automáticas**: si el ancho excede el tramo máximo del material, se agrega división vertical automáticamente.
-- **Muebles altos (>180cm)**: el validador genera warning de anclaje a pared.
-- **Modo `brief`**: las knowledge tools aceptan `brief=true` para respuestas compactas (ahorro de 34-84% en tokens). Recomendado para agentes con ventana de contexto limitada.
-- **FreeCAD**: las tools de exportación ejecutan directamente en FreeCAD via XML-RPC (puerto 9875), retornando solo un resumen compacto. Los componentes usan `App::Part` con propiedades (`PanelMaterial`, `Role`, `Thickness_mm`, `RealDimensions`, `EdgeBanding`) y grupos por función (`Estructura`, `Repisas`, `Puertas`, `Respaldo`, `Cajones`). Requiere FreeCAD 0.21+ con el addon MCP.
-- Los **labels de paneles** en FreeCAD incluyen dimensiones en mm (ej: "Lateral — side_left (590×2215×18mm)")
-- Todas las tools validan el spec de entrada y retornan errores claros si el formato es incorrecto
-- El optimizador de cortes genera **sugerencias accionables** cuando una pieza no cabe en el tablero
-- **Auto-relajación de grano**: si una pieza no cabe con restricción de grano, se relaja automáticamente a `none` con aviso
-- **Cajones completos**: `design_furniture` genera caja de cajón (laterales + trasera + fondo + frente) con correderas telescópicas
-- **Respuestas compactas** (`compact=true`): las tools principales retornan resumen legible + JSON (reduce consumo de contexto)
-- **Hot-reload**: `reload_engine` recarga módulos del engine sin reiniciar el servidor MCP
-
-## Instalación
+### Como servidor MCP (recomendado)
 
 ```bash
 uvx furniture-designer-mcp
 ```
 
-O en `.mcp.json`:
+En `.mcp.json` de tu proyecto:
 
 ```json
 {
@@ -80,84 +55,257 @@ O en `.mcp.json`:
 }
 ```
 
-## Herramientas (18 tools)
+### Desarrollo local
 
-### Diseño
+```bash
+git clone https://github.com/LuisEnVilla/furniture-designer-mcp.git
+cd furniture-designer-mcp
+uv sync
+uv run furniture-designer-mcp
+```
 
-| Tool | Descripción |
+## Funcionalidades principales
+
+### Reporte HTML interactivo
+
+El entregable principal es un reporte HTML servido en `http://localhost:8432/{design_id}` con:
+
+- **Pagina Diseno** — Viewer 3D (Three.js) del mueble ensamblado + ficha tecnica con specs, roles, hardware y notas
+- **Pagina Partes** — Vista 3D explosionada + tabla de partes con dimensiones y canteado + guia de ensamble
+- **Pagina Cortes** — Layout SVG por tablero con piezas coloreadas por rol, canteado visual, barra de uso (verde/amarillo/rojo)
+- **Pagina Historial** — Timeline vertical de iteraciones con badges de cambios
+
+<!-- ![Pagina Diseno — 3D ensamblado + ficha tecnica](docs/screenshots/report-design-3d.png) -->
+
+<!-- ![Pagina Partes — vista explosionada + tabla](docs/screenshots/report-parts-exploded.png) -->
+
+<!-- ![Pagina Cortes — layout SVG por tablero](docs/screenshots/report-cuts-layout.png) -->
+
+<!-- ![Pagina Historial — timeline de iteraciones](docs/screenshots/report-history-timeline.png) -->
+
+### Multi-diseno con persistencia
+
+Cada diseño se almacena en `./designs/{design_id}/` con:
+
+```
+designs/
+  closet-dormitorio/
+    report.html       <- servido en http://localhost:8432/closet-dormitorio
+    spec.json         <- ultimo spec (lectura rapida para el agente)
+    metadata.json     <- {name, type, created, updated, iterations}
+  cocina-isla/
+    report.html
+    spec.json
+    metadata.json
+```
+
+Puedes trabajar en multiples diseños simultáneamente y retomar cualquiera en sesiones futuras.
+
+### Live reload via WebSocket
+
+El reporte se actualiza automáticamente en el navegador cada vez que el agente genera una nueva iteración. No necesitas recargar la página — el WebSocket notifica el cambio y el JS actualiza la vista.
+
+### Mapa de secciones con lenguaje natural
+
+El motor genera etiquetas de sección automáticamente basadas en los divisores verticales del diseño:
+
+```json
+{
+  "S1": {
+    "label_es": "Seccion izquierda",
+    "aliases": ["izq", "left", "primera"],
+    "x_start_mm": 18, "x_end_mm": 900,
+    "parts": ["shelf_S1_1", "bar_S1"]
+  },
+  "S2": {
+    "label_es": "Seccion derecha",
+    "aliases": ["der", "right", "ultima"],
+    "x_start_mm": 918, "x_end_mm": 1782,
+    "parts": ["drawer_S2_1_front", "drawer_S2_2_front"]
+  }
+}
+```
+
+Esto permite que el usuario diga "haz la izquierda mas ancha" y el agente resuelva la referencia a la sección correcta.
+
+### Zocalo como marco estructural
+
+El zócalo no es un panel suelto — es un marco rectangular de 4 piezas que soporta todo el peso del mueble:
+
+```
+Vista superior del zocalo:
+
+    +------ kickplate_front ------+    <- frente (retranqueado 5cm)
+    |                              |
+    kickplate_return_l    kickplate_return_r    <- retornos laterales
+    |                              |
+    +------ kickplate_back -------+    <- fondo
+```
+
+El frente se retranquea 5cm para que los pies no choquen. Los laterales del mueble se apoyan encima de este marco.
+
+### Filtro automatico de paneles MDF
+
+Los paneles de MDF 3mm (respaldos, fondos de cajón) se filtran automáticamente del optimizador de cortes — se cortan de un stock diferente (tablero MDF, no melamina). El filtro actúa sobre roles `back`, `drawer_bottom`, y cualquier panel con espesor menor al material principal.
+
+## Herramientas (23 tools)
+
+### Diseno
+
+| Tool | Descripcion |
 |---|---|
-| `design_furniture` | Genera spec completa con paneles, hardware, posiciones y notas estructurales. Soporta cajones (`num_drawers` en options) |
+| `design_furniture` | Genera spec completa con paneles, hardware, posiciones, secciones y notas estructurales |
 
 ### Conocimiento
 
-| Tool | Descripción |
+| Tool | Descripcion |
 |---|---|
 | `get_standards` | Estándares ergonómicos por tipo de mueble |
 | `get_material_specs` | Propiedades del material (espesor, tramo máximo, agarre de tornillo) |
 | `get_structural_rules` | 10 reglas estructurales con severidad y solución |
 | `get_hardware_catalog` | Catálogo de herrajes con reglas de cantidad y colocación |
-| `get_assembly_specs` | Especificaciones de ensamble: uniones, adhesivos, pre-taladrado, montaje de bisagras/correderas |
+| `get_assembly_specs` | Especificaciones de ensamble: uniones, adhesivos, pre-taladrado, montaje |
 
-Todas las knowledge tools aceptan `brief=true` para respuestas compactas.
+> Todas aceptan `brief=true` para respuestas compactas (ahorro 60-80% tokens).
 
-### Validación y fabricación
+### Validacion y fabricacion
 
-| Tool | Descripción |
+| Tool | Descripcion |
 |---|---|
-| `validate_structure` | Valida spec contra reglas estructurales (errores + warnings) |
-| `generate_bom` | Bill of Materials: paneles agrupados, herrajes, cantos |
-| `optimize_cuts` | Optimización de corte 2D en tableros estándar con soporte de veta y kerf |
+| `validate_structure` | Valida spec contra 10 reglas estructurales (errores + warnings) |
+| `generate_bom` | Bill of Materials: paneles agrupados, herrajes, cantos en metros |
+| `optimize_cuts` | Optimización 2D en tableros estándar (2440x1220mm) con veta y kerf |
 | `get_assembly_steps` | Instrucciones de ensamble paso a paso en español |
 
-### FreeCAD — Exportar (requiere FreeCAD con RPC server)
+### Multi-diseno y reporte
 
-| Tool | Descripción |
+| Tool | Descripcion |
 |---|---|
-| `build_3d_model` | Construye modelo 3D directamente en FreeCAD via XML-RPC |
-| `build_exploded_view` | Construye vista explosionada directamente en FreeCAD |
-| `build_cut_diagram` | Construye diagrama de corte directamente en FreeCAD |
-| `build_techdraw` | Construye plano técnico TechDraw directamente en FreeCAD |
+| `create_design` | Crea proyecto de diseño nuevo (retorna design_id) |
+| `list_designs` | Lista todos los diseños activos con metadata |
+| `get_design_context` | Recupera spec + historial de un diseño para retomar |
+| `get_section_map` | Mapa de secciones con etiquetas y resolución de lenguaje natural |
+| `start_design_server` | Inicia servidor HTTP (puerto 8432) con WebSocket live reload |
+| `update_design_report` | Genera/actualiza reporte HTML interactivo |
 
-### FreeCAD — Importar (requiere freecad-mcp)
+### FreeCAD — exportar (requiere FreeCAD + RPC server)
 
-| Tool | Descripción |
+| Tool | Descripcion |
+|---|---|
+| `build_3d_model` | Construye modelo 3D ensamblado en FreeCAD via XML-RPC |
+| `build_exploded_view` | Construye vista explosionada en FreeCAD |
+| `build_cut_diagram` | Construye diagrama de corte en FreeCAD |
+| `build_techdraw` | Construye plano técnico TechDraw (vistas ortogonales A3) |
+
+### FreeCAD — importar (requiere freecad-mcp)
+
+| Tool | Descripcion |
 |---|---|
 | `build_import_script` | Script para extraer paneles de un documento FreeCAD existente |
-| `parse_freecad_import` | Parsear salida del script de importación a spec de mueble |
-
-### Reporte de diseño
-
-| Tool | Descripción |
-|---|---|
-| `update_design_report` | Genera/actualiza reporte HTML interactivo con viewer 3D, historial de iteraciones |
+| `parse_freecad_import` | Parsear salida del script de importación a spec |
 
 ### Desarrollo
 
-| Tool | Descripción |
+| Tool | Descripcion |
 |---|---|
-| `reload_engine` | Recarga todos los módulos del engine sin reiniciar el servidor MCP |
+| `reload_engine` | Recarga módulos del engine sin reiniciar el servidor MCP |
 
-## Tipos de mueble soportados
+## Tipos de mueble
 
-| Tipo | Descripción | Características |
+| Tipo | Descripcion | Caracteristicas clave |
 |---|---|---|
-| `kitchen_base` | Gabinete base de cocina | Zócalo, travesaños, sin tapa (para cubierta) |
+| `kitchen_base` | Gabinete base de cocina | Zócalo 4 piezas, travesaños, sin tapa (para cubierta) |
 | `kitchen_wall` | Gabinete aéreo de cocina | Sin zócalo, tapa superior e inferior |
-| `closet` | Closet / armario | Zócalo, divisiones automáticas si >75cm ancho |
+| `closet` | Closet / armario | Zócalo, divisiones auto si >75cm, alerta anclaje si >180cm |
 | `bookshelf` | Librero / estantería | Repisas múltiples, puertas opcionales |
 | `desk` | Escritorio | Espacio para rodillas (60cm), panel de recato |
 | `vanity` | Vanitorio / mueble de baño | Estructura tipo base de cocina |
 
-## Materiales soportados
+<!-- ![Tipos de mueble soportados — diagrama comparativo](docs/screenshots/furniture-types-overview.png) -->
 
-| Material | Espesor | Tramo máximo sin soporte |
-|---|---|---|
-| `melamine_16` (default) | 16mm | 75cm |
-| `melamine_18` | 18mm | 85cm |
-| `mdf_15` | 15mm | 80cm |
-| `mdf_18` | 18mm | 90cm |
-| `plywood_18` | 18mm | 100cm |
-| `solid_pine_20` | 20mm | 110cm |
+## Materiales
+
+| Material | Espesor | Tramo max. sin soporte | Mejor para |
+|---|---|---|---|
+| `melamine_16` (default) | 16mm | 75cm | Uso general, más económico |
+| `melamine_18` | 18mm | 85cm | Cocinas y closets de gama alta |
+| `mdf_15` | 15mm | 80cm | Muebles pintados |
+| `mdf_18` | 18mm | 90cm | Puertas con diseño CNC |
+| `plywood_18` | 18mm | 100cm | Tramos largos, alta resistencia |
+| `solid_pine_20` | 20mm | 120cm | Muebles de madera maciza |
+
+## Arquitectura del servidor
+
+```
+furniture-designer-mcp/
+  src/furniture_designer_mcp/
+    server.py                  <- Punto de entrada MCP (23 tools)
+    engine/
+      designer.py              <- Motor principal: spec + section_labels
+      structural_validator.py  <- 10 reglas estructurales
+      cut_optimizer.py         <- Bin packing 2D con veta y kerf
+      bom_generator.py         <- Bill of Materials
+      spec_validator.py        <- Validacion de formato de spec
+      spec_builder.py          <- Construccion de spec desde parametros
+      section_mapper.py        <- Mapa de secciones + resolucion natural
+      design_store.py          <- Multi-diseno + persistencia ./designs/
+      http_server.py           <- HTTP + WebSocket (puerto 8432)
+      report_generator.py      <- Template HTML interactivo (~1900 lineas)
+      freecad_scripts.py       <- Generacion de scripts FreeCAD
+      freecad_client.py        <- XML-RPC client para FreeCAD
+    knowledge/
+      standards.py             <- Estandares ergonomicos
+      materials.py             <- Propiedades de materiales
+      structural_rules.py      <- Reglas de ingenieria
+      hardware_catalog.py      <- Catalogo de herrajes
+      assembly_specs.py        <- Especificaciones de ensamble
+```
+
+## Consideraciones tecnicas
+
+### Unidades
+
+- **Entrada**: dimensiones en **cm** (ancho, alto, fondo)
+- **Salida**: spec en **mm** (`width_mm`, `height_mm`, `thickness_mm`)
+- **Cortes**: el optimizer usa `width`/`height` (sin sufijo `_mm`) — schema diferente al spec
+
+### Veta del material
+
+El optimizador soporta `grain_direction="length"` para mantener la dirección de veta consistente en melaminas con textura. Esto restringe la rotación de piezas. Si una pieza no cabe con restricción de veta, se relaja automáticamente a `none` con aviso.
+
+### Desbaste de sierra (kerf)
+
+3mm por defecto. Se descuenta en cada corte del optimizador. Ajustable según la hoja utilizada.
+
+### Respaldos
+
+Siempre MDF 3mm. El validador genera error si un mueble no tiene panel trasero (rol `back`). Se excluyen automáticamente del optimizador de cortes de melamina.
+
+### Divisiones automaticas
+
+Si el ancho de una sección excede el tramo máximo del material, se agrega una división vertical automáticamente.
+
+### Muebles altos (>180cm)
+
+El validador genera warning de anclaje a pared por riesgo de volcamiento.
+
+### Cajones completos
+
+`design_furniture` genera caja completa: frente + 2 laterales + trasera + fondo MDF 3mm + correderas telescópicas.
+
+### Modo compact
+
+Las tools principales retornan `compact=true` por defecto: resumen legible + JSON reducido. Usar `compact=false` solo si se necesita el JSON completo.
+
+### Hot-reload
+
+`reload_engine` recarga todos los módulos del engine sin reiniciar el servidor MCP. Útil durante desarrollo.
+
+## Requisitos
+
+- Python >= 3.12
+- [uv](https://docs.astral.sh/uv/) para gestión de paquetes
+- FreeCAD 0.21+ con addon MCP (solo para exportación 3D)
 
 ## Licencia
 
