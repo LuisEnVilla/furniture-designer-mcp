@@ -30,12 +30,34 @@ def validate_structure(spec: dict) -> dict:
     roles = {p["role"] for p in parts}
     max_span = mat.get("max_span_no_support_cm", 80)
 
-    # Rule: back_panel_required
-    if "back" not in roles:
+    # Rule: back_panel_required (respects back_type option)
+    back_type = spec.get("back_type", "full")
+
+    if "back" not in roles and back_type == "full":
         errors.append({
             "rule": "back_panel_required",
             "message": "Falta el respaldo (back panel). El mueble se va a rackear.",
             "fix": "Agregar panel trasero de MDF 3mm mínimo.",
+        })
+    elif "back" not in roles and back_type == "rails":
+        back_rails = [p for p in parts if p["role"] == "back_rail"]
+        if not back_rails:
+            errors.append({
+                "rule": "back_panel_required",
+                "message": "back_type='rails' pero no se encontraron rails traseros.",
+                "fix": "Agregar rails traseros (superior e inferior).",
+            })
+        else:
+            warnings.append({
+                "rule": "back_panel_ventilation",
+                "message": "Respaldo tipo rails. Menor rigidez lateral.",
+                "fix": "Asegurar anclaje a pared si el mueble es alto.",
+            })
+    elif "back" not in roles and back_type == "none":
+        warnings.append({
+            "rule": "back_panel_none",
+            "message": "Sin respaldo. DEBE estar anclado a pared.",
+            "fix": "Instalar escuadras de anclaje a pared.",
         })
 
     # Rule: max_span_check — check shelves

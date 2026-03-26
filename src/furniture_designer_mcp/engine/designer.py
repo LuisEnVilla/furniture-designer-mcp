@@ -9,6 +9,28 @@ from __future__ import annotations
 from ..knowledge.ergonomics import ERGONOMIC_STANDARDS
 from ..knowledge.materials import MATERIALS
 from ..knowledge.structural_rules import STRUCTURAL_RULES
+from .section_mapper import map_sections
+
+# Safety limits for quantities
+MAX_SHELVES = 20
+MAX_DRAWERS = 10
+
+
+def _clamp_quantities(opts: dict, notes: list[str]) -> dict:
+    """Clamp num_shelves / num_drawers to safe maximums. Mutates opts in-place."""
+    ns = opts.get("num_shelves")
+    if ns is not None and ns > MAX_SHELVES:
+        notes.append(f"⚠ num_shelves={ns} excede límite ({MAX_SHELVES}). Ajustado a {MAX_SHELVES}.")
+        opts["num_shelves"] = MAX_SHELVES
+    nd = opts.get("num_drawers")
+    if nd is not None and nd > MAX_DRAWERS:
+        notes.append(f"⚠ num_drawers={nd} excede límite ({MAX_DRAWERS}). Ajustado a {MAX_DRAWERS}.")
+        opts["num_drawers"] = MAX_DRAWERS
+    # Warn if sections + num_shelves both provided (potential conflict)
+    if opts.get("sections") and opts.get("num_shelves") is not None:
+        notes.append("⚠ Se proporcionó 'sections' y 'num_shelves' al mismo tiempo. "
+                      "'sections' tiene prioridad — 'num_shelves' se ignora para secciones personalizadas.")
+    return opts
 
 
 def generate_furniture_spec(
@@ -23,7 +45,7 @@ def generate_furniture_spec(
 
     All input dimensions in cm. Output dimensions in mm for manufacturing.
     """
-    opts = options or {}
+    opts = dict(options) if options else {}
     mat = MATERIALS.get(material)
     if mat is None:
         raise ValueError(f"Unknown material: {material}")
@@ -39,6 +61,9 @@ def generate_furniture_spec(
     parts: list[dict] = []
     hardware: list[dict] = []
     notes: list[str] = []
+
+    # Clamp quantities to safe limits
+    _clamp_quantities(opts, notes)
 
     # --- Dispatch to type-specific builder ---
     if furniture_type == "kitchen_base":
@@ -56,13 +81,8 @@ def generate_furniture_spec(
     else:
         parts, hardware, notes = _build_box_cabinet(W, H, D, t, opts, standards, mat, has_kickplate=False)
 
-    # --- Structural validation notes ---
-    max_span = mat["max_span_no_support_cm"]
-    if width > max_span:
-        notes.append(
-            f"ATENCIÓN: Ancho ({width}cm) excede tramo libre máximo del material "
-            f"({max_span}cm). Se agregó división vertical."
-        )
+    # --- Store back_type in spec for validator ---
+    back_type = opts.get("back_type", "full") if opts else "full"
 
     spec = {
         "furniture_type": furniture_type,
@@ -70,11 +90,16 @@ def generate_furniture_spec(
         "dimensions_mm": {"width": W, "height": H, "depth": D},
         "material": material,
         "material_thickness_mm": t,
+        "back_type": back_type,
         "parts": parts,
         "hardware": hardware,
         "notes": notes,
         "standards_applied": standards.get("name", furniture_type),
     }
+
+    # Auto-generate section labels for natural language referencing
+    spec["section_labels"] = map_sections(spec)
+
     return spec
 
 
@@ -100,12 +125,15 @@ def _build_kitchen_base(W, H, D, t, opts, standards, mat):
     # Bottom
     parts.append(_panel("bottom", "bottom", inner_w, D, t, pos=[t, 0, kickplate_h]))
 
-    # Vertical divider if too wide
-    num_sections = 1
-    if (W / 10) > max_span:
-        num_sections = 2
-        mid_x = W / 2 - t / 2
-        parts.append(_panel("divider_center", "divider", D, body_h, t, pos=[mid_x, 0, kickplate_h]))
+    # Vertical dividers (auto-calculated)
+    divider_positions = _calc_dividers(inner_w, max_span, t)
+    num_sections = len(divider_positions) + 1
+
+    for i, div_x in enumerate(divider_positions):
+        parts.append(_panel(f"divider_{i+1}", "divider", D, body_h, t, pos=[div_x, 0, kickplate_h]))
+
+    if divider_positions:
+        notes.append(f"{len(divider_positions)} divisor(es) vertical(es) agregado(s): ancho interior ({inner_w/10:.1f}cm) excede tramo libre ({max_span}cm).")
 
     # Top rails (no full top panel — countertop goes on top)
     rail_h = 80  # 8cm rail
@@ -113,20 +141,35 @@ def _build_kitchen_base(W, H, D, t, opts, standards, mat):
     parts.append(_panel("rail_back", "rail", inner_w, rail_h, t, pos=[t, D - t, kickplate_h + body_h - rail_h]))
 
     # Back panel
-    back_t = 3  # 3mm MDF
-    parts.append(_panel("back", "back", inner_w, body_h, back_t, pos=[t, D - back_t, kickplate_h]))
+    back_type = opts.get("back_type", "full")
+    if back_type == "full":
+        back_t = 3  # 3mm MDF
+        parts.append(_panel("back", "back", inner_w, body_h, back_t, pos=[t, D - back_t, kickplate_h]))
+    elif back_type == "rails":
+        rail_back_h = 80
+        parts.append(_panel("rail_back_top", "back_rail", inner_w, rail_back_h, t,
+                            pos=[t, D - t, kickplate_h + body_h - rail_back_h]))
+        parts.append(_panel("rail_back_bottom", "back_rail", inner_w, rail_back_h, t,
+                            pos=[t, D - t, kickplate_h]))
+        notes.append("Respaldo tipo rails — ventilación posterior.")
+    elif back_type == "none":
+        notes.append("Sin respaldo — mueble requiere anclaje a pared.")
 
     # Shelf
     num_shelves = opts.get("num_shelves", 1)
-    section_w = inner_w / num_sections
+    section_w = (inner_w - len(divider_positions) * t) / num_sections
     for i in range(num_shelves):
         shelf_z = kickplate_h + body_h * (i + 1) / (num_shelves + 1)
         parts.append(_panel(f"shelf_{i+1}", "shelf", section_w - 2, D - 20, t,
                             pos=[t + 1, 0, shelf_z], adjustable=True))
 
-    # Kickplate
-    setback = 50  # 5cm setback
-    parts.append(_panel("kickplate", "kickplate", inner_w, kickplate_h, t, pos=[t, setback, 0]))
+    # Kickplate base frame (4 pieces: front, back, 2 returns)
+    setback = 50  # 5cm setback from front
+    return_depth = D - setback - t  # from behind front rail to back rail
+    parts.append(_panel("kickplate_front", "kickplate", inner_w, kickplate_h, t, pos=[t, setback, 0]))
+    parts.append(_panel("kickplate_back", "kickplate", inner_w, kickplate_h, t, pos=[t, D - t, 0]))
+    parts.append(_panel("kickplate_return_l", "kickplate_return", return_depth, kickplate_h, t, pos=[t, setback + t, 0]))
+    parts.append(_panel("kickplate_return_r", "kickplate_return", return_depth, kickplate_h, t, pos=[W - 2 * t, setback + t, 0]))
 
     # Door(s)
     door_type = opts.get("door_type", "single" if W <= 600 else "double")
@@ -201,17 +244,33 @@ def _build_box_cabinet(W, H, D, t, opts, standards, mat, has_kickplate=False):
     parts.append(_panel("top", "top_panel", inner_w, D, t, pos=[t, 0, kickplate_h + body_h - t]))
     parts.append(_panel("bottom", "bottom", inner_w, D, t, pos=[t, 0, kickplate_h]))
 
-    # Vertical divider if too wide
-    num_sections = 1
-    if (W / 10) > max_span:
-        num_sections = 2
-        mid_x = W / 2 - t / 2
-        parts.append(_panel("divider_center", "divider", D, body_h, t, pos=[mid_x, 0, kickplate_h]))
-        notes.append(f"División vertical agregada: ancho ({W/10}cm) excede tramo libre ({max_span}cm).")
+    # Vertical dividers (auto-calculated)
+    divider_positions = _calc_dividers(inner_w, max_span, t)
+    num_sections = len(divider_positions) + 1
+
+    for i, div_x in enumerate(divider_positions):
+        parts.append(_panel(f"divider_{i+1}", "divider", D, body_h, t, pos=[div_x, 0, kickplate_h]))
+
+    if divider_positions:
+        notes.append(
+            f"{len(divider_positions)} divisor(es) vertical(es) agregado(s): "
+            f"ancho interior ({inner_w/10:.1f}cm) excede tramo libre ({max_span}cm)."
+        )
 
     # Back panel
-    back_t = 3
-    parts.append(_panel("back", "back", inner_w, body_h, back_t, pos=[t, D - back_t, kickplate_h]))
+    back_type = opts.get("back_type", "full")
+    if back_type == "full":
+        back_t = 3
+        parts.append(_panel("back", "back", inner_w, body_h, back_t, pos=[t, D - back_t, kickplate_h]))
+    elif back_type == "rails":
+        rail_back_h = 80
+        parts.append(_panel("rail_back_top_struct", "back_rail", inner_w, rail_back_h, t,
+                            pos=[t, D - t, kickplate_h + body_h - rail_back_h]))
+        parts.append(_panel("rail_back_bottom_struct", "back_rail", inner_w, rail_back_h, t,
+                            pos=[t, D - t, kickplate_h]))
+        notes.append("Respaldo tipo rails — ventilación posterior.")
+    elif back_type == "none":
+        notes.append("Sin respaldo — mueble requiere anclaje a pared.")
 
     # Rails for wide cabinets
     if W > 600:
@@ -220,18 +279,91 @@ def _build_box_cabinet(W, H, D, t, opts, standards, mat, has_kickplate=False):
                             pos=[t, D - t, kickplate_h + body_h - t - rail_h]))
         notes.append("Travesaño trasero superior agregado por ancho > 60cm.")
 
-    # Shelves
-    num_shelves = opts.get("num_shelves", max(1, int(body_h / 300) - 1))
-    section_w = inner_w / num_sections
-    for i in range(num_shelves):
-        shelf_z = kickplate_h + t + (body_h - 2 * t) * (i + 1) / (num_shelves + 1)
-        parts.append(_panel(f"shelf_{i+1}", "shelf", section_w - 2, D - 20, t,
-                            pos=[t + 1, 0, shelf_z], adjustable=True))
+    # Section width
+    section_w = (inner_w - len(divider_positions) * t) / num_sections
 
-    # Kickplate
+    # --- Reconcile sections config with dividers ---
+    sections_cfg = opts.get("sections")
+    if sections_cfg:
+        # If user requests more sections than auto-calculated, add extra dividers
+        requested_sections = len(sections_cfg)
+        if requested_sections > num_sections:
+            divider_positions = _calc_dividers_for_n(inner_w, requested_sections, t)
+            # Remove old dividers and re-add
+            parts = [p for p in parts if p["role"] != "divider"]
+            for i, div_x in enumerate(divider_positions):
+                parts.append(_panel(f"divider_{i+1}", "divider", D, body_h, t, pos=[div_x, 0, kickplate_h]))
+            num_sections = requested_sections
+            section_w = (inner_w - len(divider_positions) * t) / num_sections
+            notes.append(f"{len(divider_positions)} divisor(es) para {num_sections} secciones personalizadas.")
+
+    # --- Section content ---
+    if sections_cfg:
+        # Custom layout per section
+        total_shelf_pins = 0
+        for sec_i, sec_cfg in enumerate(sections_cfg):
+            sec_x = _section_start_x(sec_i, section_w, divider_positions, t)
+            s_parts, s_hw, s_notes = _build_section_content(
+                section_index=sec_i,
+                section_config=sec_cfg,
+                section_x=sec_x,
+                section_w=section_w,
+                body_h=body_h,
+                kickplate_h=kickplate_h,
+                D=D,
+                t=t,
+            )
+            parts.extend(s_parts)
+            hardware.extend(s_hw)
+            notes.extend(s_notes)
+            # Count adjustable shelves for pins
+            total_shelf_pins += sum(4 for p in s_parts if p.get("adjustable"))
+        hardware.append({"type": "confirmat_7x50", "usage": "panel joints", "estimated_qty": _estimate_confirmats(parts)})
+        if total_shelf_pins > 0:
+            hardware.append({"type": "shelf_pin_5mm", "qty": total_shelf_pins, "usage": "adjustable shelves"})
+    else:
+        # Default uniform layout (backwards compatible)
+        num_shelves = opts.get("num_shelves", max(1, int(body_h / 300) - 1))
+        for i in range(num_shelves):
+            shelf_z = kickplate_h + t + (body_h - 2 * t) * (i + 1) / (num_shelves + 1)
+            parts.append(_panel(f"shelf_{i+1}", "shelf", section_w - 2, D - 20, t,
+                                pos=[t + 1, 0, shelf_z], adjustable=True))
+
+        # Drawers (global)
+        num_drawers = opts.get("num_drawers", 0)
+        if num_drawers > 0:
+            drawer_front_h = opts.get("drawer_height", 140)
+            drawer_box_h = 110
+            drawer_gap = 3
+            drawer_start_z = kickplate_h + t
+
+            for i in range(num_drawers):
+                d_z = drawer_start_z + i * (drawer_front_h + drawer_gap)
+                d_parts, d_hw = _build_drawer_box(
+                    drawer_id=f"drawer_{i+1}",
+                    section_x=t,
+                    section_inner_w=section_w,
+                    drawer_z=d_z,
+                    depth=D,
+                    drawer_h=drawer_box_h,
+                    front_h=drawer_front_h,
+                    t=t,
+                )
+                parts.extend(d_parts)
+                hardware.extend(d_hw)
+            notes.append(f"{num_drawers} cajón(es) con caja completa (laterales + trasera + fondo).")
+
+        hardware.append({"type": "confirmat_7x50", "usage": "panel joints", "estimated_qty": _estimate_confirmats(parts)})
+        hardware.append({"type": "shelf_pin_5mm", "qty": num_shelves * 4, "usage": "adjustable shelves"})
+
+    # Kickplate base frame (4 pieces: front, back, 2 returns)
     if has_kickplate:
-        setback = 50
-        parts.append(_panel("kickplate", "kickplate", inner_w, kickplate_h, t, pos=[t, setback, 0]))
+        setback = 50  # 5cm setback from front
+        return_depth = D - setback - t  # from behind front rail to back rail
+        parts.append(_panel("kickplate_front", "kickplate", inner_w, kickplate_h, t, pos=[t, setback, 0]))
+        parts.append(_panel("kickplate_back", "kickplate", inner_w, kickplate_h, t, pos=[t, D - t, 0]))
+        parts.append(_panel("kickplate_return_l", "kickplate_return", return_depth, kickplate_h, t, pos=[t, setback + t, 0]))
+        parts.append(_panel("kickplate_return_r", "kickplate_return", return_depth, kickplate_h, t, pos=[W - 2 * t, setback + t, 0]))
 
     # Doors (optional)
     has_doors = opts.get("has_doors", False)
@@ -247,35 +379,6 @@ def _build_box_cabinet(W, H, D, t, opts, standards, mat, has_kickplate=False):
         else:
             parts.append(_panel("door", "door", W - door_gap, body_h - door_gap, t, pos=[0, 0, kickplate_h]))
             hardware.append(_hinge_set("door", body_h))
-
-    # Drawers
-    num_drawers = opts.get("num_drawers", 0)
-    if num_drawers > 0:
-        drawer_front_h = opts.get("drawer_height", 140)  # mm, visible front
-        drawer_box_h = 110  # mm, internal box height
-        drawer_gap = 3  # mm between drawers
-        drawer_start_z = kickplate_h + t  # Start above bottom panel
-
-        for i in range(num_drawers):
-            d_z = drawer_start_z + i * (drawer_front_h + drawer_gap)
-            d_parts, d_hw = _build_drawer_box(
-                drawer_id=f"drawer_{i+1}",
-                section_x=t,
-                section_inner_w=section_w,
-                drawer_z=d_z,
-                depth=D,
-                drawer_h=drawer_box_h,
-                front_h=drawer_front_h,
-                t=t,
-            )
-            parts.extend(d_parts)
-            hardware.extend(d_hw)
-
-        notes.append(f"{num_drawers} cajón(es) con caja completa (laterales + trasera + fondo).")
-
-    # Hardware
-    hardware.append({"type": "confirmat_7x50", "usage": "panel joints", "estimated_qty": _estimate_confirmats(parts)})
-    hardware.append({"type": "shelf_pin_5mm", "qty": num_shelves * 4, "usage": "adjustable shelves"})
 
     # Tall furniture warning
     if H > 1800:
@@ -334,6 +437,254 @@ def _build_desk(W, H, D, t, opts, standards, mat):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _calc_dividers(total_inner_w: float, max_span_cm: float, t: float) -> list[float]:
+    """Calcula posiciones X de divisores necesarios para respetar max_span.
+
+    Args:
+        total_inner_w: Ancho interior libre en mm (entre laterales).
+        max_span_cm: Tramo libre máximo del material en cm.
+        t: Espesor del material en mm.
+
+    Returns:
+        Lista de posiciones X (en mm, desde borde izquierdo del mueble)
+        donde colocar cada divisor.
+    """
+    import math
+    max_span_mm = max_span_cm * 10
+    num_sections = math.ceil(total_inner_w / max_span_mm)
+    if num_sections <= 1:
+        return []
+
+    num_dividers = num_sections - 1
+    net_w = total_inner_w - num_dividers * t
+    section_w = net_w / num_sections
+
+    positions = []
+    for i in range(1, num_sections):
+        pos_x = t + i * section_w + (i - 1) * t
+        positions.append(pos_x)
+
+    return positions
+
+
+def _calc_dividers_for_n(total_inner_w: float, num_sections: int, t: float) -> list[float]:
+    """Calcula posiciones de divisores para exactamente N secciones.
+
+    Similar a _calc_dividers pero fuerza un número específico de secciones
+    en vez de calcularlo desde max_span.
+    """
+    if num_sections <= 1:
+        return []
+
+    num_dividers = num_sections - 1
+    net_w = total_inner_w - num_dividers * t
+    section_w = net_w / num_sections
+
+    positions = []
+    for i in range(1, num_sections):
+        pos_x = t + i * section_w + (i - 1) * t
+        positions.append(pos_x)
+
+    return positions
+
+
+def _section_start_x(section_index: int, section_w: float, divider_positions: list[float], t: float) -> float:
+    """Calcula la posición X de inicio de una sección.
+
+    Sección 0 empieza en x=t (después del lateral izquierdo).
+    Secciones siguientes empiezan después del divisor correspondiente + su espesor.
+    """
+    if section_index == 0:
+        return t
+    return divider_positions[section_index - 1] + t
+
+
+def _hanging_bar(
+    section_id: str,
+    section_x: float,
+    section_w: float,
+    D: float,
+    height_z: float,
+    t: float,
+) -> tuple[list[dict], list[dict]]:
+    """Genera soporte y hardware para barra de colgar.
+
+    Returns (parts, hardware).
+    """
+    # Two small support rails (left and right brackets)
+    bracket_h = 30  # 3cm bracket
+    parts = [
+        _panel(f"{section_id}_bar_support_l", "rail", bracket_h, bracket_h, t,
+               pos=[section_x, 0, height_z]),
+        _panel(f"{section_id}_bar_support_r", "rail", bracket_h, bracket_h, t,
+               pos=[section_x + section_w - bracket_h, 0, height_z]),
+    ]
+    hardware = [
+        {
+            "type": "hanging_bar_chrome",
+            "section": section_id,
+            "qty": 1,
+            "length_mm": round(section_w, 1),
+            "description": f"Tubo cromado Ø25mm, {round(section_w/10, 1)}cm",
+            "position_z_mm": round(height_z, 1),
+        },
+    ]
+    return parts, hardware
+
+
+def _build_section_content(
+    section_index: int,
+    section_config: dict,
+    section_x: float,
+    section_w: float,
+    body_h: float,
+    kickplate_h: float,
+    D: float,
+    t: float,
+) -> tuple[list[dict], list[dict], list[str]]:
+    """Genera partes, hardware y notas para una sección individual.
+
+    Args:
+        section_index: Índice de la sección (0-based).
+        section_config: Dict con "content" y parámetros opcionales.
+        section_x: Posición X de inicio de la sección (mm).
+        section_w: Ancho interior de la sección (mm).
+        body_h: Altura del cuerpo del mueble (mm).
+        kickplate_h: Altura del zócalo (mm).
+        D: Profundidad total (mm).
+        t: Espesor del material (mm).
+    """
+    parts = []
+    hardware = []
+    notes = []
+
+    sid = f"S{section_index + 1}"
+    content = section_config.get("content", "shelves")
+    base_z = kickplate_h + t  # above bottom panel
+    usable_h = body_h - 2 * t  # between bottom and top panels
+
+    if content == "shelves":
+        num_shelves = section_config.get("num_shelves", max(1, int(usable_h / 300) - 1))
+        for i in range(num_shelves):
+            shelf_z = base_z + usable_h * (i + 1) / (num_shelves + 1)
+            parts.append(_panel(
+                f"shelf_{sid}_{i+1}", "shelf", section_w - 2, D - 20, t,
+                pos=[section_x + 1, 0, shelf_z], adjustable=True,
+            ))
+        notes.append(f"Sección {sid}: {num_shelves} repisa(s).")
+
+    elif content == "drawers":
+        num_drawers = section_config.get("num_drawers", 3)
+        drawer_front_h = section_config.get("drawer_height", 140)
+        drawer_box_h = 110
+        drawer_gap = 3
+        for i in range(num_drawers):
+            d_z = base_z + i * (drawer_front_h + drawer_gap)
+            d_parts, d_hw = _build_drawer_box(
+                drawer_id=f"drawer_{sid}_{i+1}",
+                section_x=section_x,
+                section_inner_w=section_w,
+                drawer_z=d_z,
+                depth=D,
+                drawer_h=drawer_box_h,
+                front_h=drawer_front_h,
+                t=t,
+            )
+            parts.extend(d_parts)
+            hardware.extend(d_hw)
+        notes.append(f"Sección {sid}: {num_drawers} cajón(es).")
+
+    elif content == "hanging":
+        bar_h_cm = section_config.get("hanging_bar_height_cm", 160)
+        bar_z = kickplate_h + bar_h_cm * 10
+        bar_parts, bar_hw = _hanging_bar(sid, section_x, section_w, D, bar_z, t)
+        parts.extend(bar_parts)
+        hardware.extend(bar_hw)
+        notes.append(f"Sección {sid}: barra de colgar a {bar_h_cm}cm.")
+
+    elif content == "drawers+hanging":
+        # Drawers at bottom, hanging bar above
+        num_drawers = section_config.get("num_drawers", 3)
+        drawer_front_h = section_config.get("drawer_height", 140)
+        drawer_box_h = 110
+        drawer_gap = 3
+        for i in range(num_drawers):
+            d_z = base_z + i * (drawer_front_h + drawer_gap)
+            d_parts, d_hw = _build_drawer_box(
+                drawer_id=f"drawer_{sid}_{i+1}",
+                section_x=section_x,
+                section_inner_w=section_w,
+                drawer_z=d_z,
+                depth=D,
+                drawer_h=drawer_box_h,
+                front_h=drawer_front_h,
+                t=t,
+            )
+            parts.extend(d_parts)
+            hardware.extend(d_hw)
+
+        # Separator shelf above drawers
+        drawers_top_z = base_z + num_drawers * (drawer_front_h + drawer_gap)
+        parts.append(_panel(
+            f"shelf_{sid}_sep", "shelf", section_w - 2, D - 20, t,
+            pos=[section_x + 1, 0, drawers_top_z],
+        ))
+
+        # Hanging bar above separator
+        bar_h_cm = section_config.get("hanging_bar_height_cm", 160)
+        bar_z = kickplate_h + bar_h_cm * 10
+        if bar_z <= drawers_top_z + t:
+            bar_z = drawers_top_z + t + 50  # at least 5cm above separator
+        bar_parts, bar_hw = _hanging_bar(sid, section_x, section_w, D, bar_z, t)
+        parts.extend(bar_parts)
+        hardware.extend(bar_hw)
+        notes.append(f"Sección {sid}: {num_drawers} cajón(es) + barra de colgar.")
+
+    elif content == "drawers+shelves":
+        # Drawers at bottom, shelves above
+        num_drawers = section_config.get("num_drawers", 3)
+        drawer_front_h = section_config.get("drawer_height", 140)
+        drawer_box_h = 110
+        drawer_gap = 3
+        for i in range(num_drawers):
+            d_z = base_z + i * (drawer_front_h + drawer_gap)
+            d_parts, d_hw = _build_drawer_box(
+                drawer_id=f"drawer_{sid}_{i+1}",
+                section_x=section_x,
+                section_inner_w=section_w,
+                drawer_z=d_z,
+                depth=D,
+                drawer_h=drawer_box_h,
+                front_h=drawer_front_h,
+                t=t,
+            )
+            parts.extend(d_parts)
+            hardware.extend(d_hw)
+
+        # Separator shelf above drawers
+        drawers_top_z = base_z + num_drawers * (drawer_front_h + drawer_gap)
+        parts.append(_panel(
+            f"shelf_{sid}_sep", "shelf", section_w - 2, D - 20, t,
+            pos=[section_x + 1, 0, drawers_top_z],
+        ))
+
+        # Shelves above separator
+        remaining_h = (kickplate_h + body_h - t) - (drawers_top_z + t)
+        num_shelves = section_config.get("num_shelves", max(1, int(remaining_h / 300) - 1))
+        for i in range(num_shelves):
+            shelf_z = drawers_top_z + t + remaining_h * (i + 1) / (num_shelves + 1)
+            parts.append(_panel(
+                f"shelf_{sid}_{i+1}", "shelf", section_w - 2, D - 20, t,
+                pos=[section_x + 1, 0, shelf_z], adjustable=True,
+            ))
+        notes.append(f"Sección {sid}: {num_drawers} cajón(es) + {num_shelves} repisa(s).")
+
+    elif content == "empty":
+        notes.append(f"Sección {sid}: vacía.")
+
+    return parts, hardware, notes
+
 
 def _panel(id: str, role: str, width: float, height: float, thickness: float,
            pos: list | None = None, adjustable: bool = False) -> dict:

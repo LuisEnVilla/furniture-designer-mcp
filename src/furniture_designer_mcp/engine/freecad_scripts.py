@@ -30,11 +30,13 @@ _COLORS = {
     "door": (0.60, 0.75, 0.90, 1.0),
     "rail": (0.65, 0.55, 0.42, 1.0),
     "kickplate": (0.50, 0.50, 0.50, 1.0),
+    "kickplate_return": (0.50, 0.50, 0.50, 1.0),
     "divider": (0.90, 0.72, 0.40, 1.0),
     "drawer_front": (0.60, 0.75, 0.90, 1.0),
     "drawer_side": (0.50, 0.65, 0.85, 1.0),
     "drawer_back": (0.45, 0.60, 0.80, 1.0),
     "drawer_bottom": (0.55, 0.70, 0.88, 1.0),
+    "back_rail": (0.70, 0.70, 0.70, 1.0),
 }
 
 _DEFAULT_COLOR = (0.80, 0.70, 0.55, 1.0)
@@ -48,7 +50,9 @@ _ROLE_GROUPS = {
     "divider": "Estructura",
     "rail": "Estructura",
     "kickplate": "Estructura",
+    "kickplate_return": "Estructura",
     "back": "Respaldo",
+    "back_rail": "Respaldo",
     "shelf": "Repisas",
     "door": "Puertas",
     "drawer_front": "Cajones",
@@ -65,9 +69,11 @@ _ROLE_LABELS = {
     "floor": "Piso",
     "shelf": "Repisa",
     "back": "Respaldo",
+    "back_rail": "Rail Respaldo",
     "door": "Puerta",
     "rail": "Travesaño",
     "kickplate": "Zócalo",
+    "kickplate_return": "Retorno zócalo",
     "divider": "División vertical",
     "drawer_front": "Frente de cajón",
     "drawer_side": "Lateral de cajón",
@@ -124,6 +130,10 @@ def _box_dims(part: dict) -> tuple[float, float, float]:
         # Vertical panel at front-bottom
         # wide in X, thin in Y, height in Z
         return (w, t, h)
+    elif role == "kickplate_return":
+        # Vertical panel perpendicular to X (like side) for kickplate frame
+        # thin in X, depth in Y, height in Z
+        return (t, w, h)
     else:
         # Default: treat as horizontal
         return (w, h, t)
@@ -306,6 +316,7 @@ def exploded_view_script(spec: dict, gap_mm: float = 50, doc_name: str = "Explod
         "door": (0, -1.5, 0),       # doors push forward
         "rail": (0, 0, 0.2),        # rails float slightly
         "kickplate": (0, 0, -1.5),  # kickplate pushes down
+        "kickplate_return": (0, 0, -1.5),
         "drawer_front": (0, -1.5, 0),
         "drawer_side": (0, -1.5, 0),
         "drawer_back": (0, -1.5, 0),
@@ -581,6 +592,7 @@ _REVERSE_DIMS = {
     "drawer_bottom":("Length", "Width", "Height"),    # thin in Z
     "rail":        ("Length", "Height", "Width"),     # thin in Y
     "kickplate":   ("Length", "Height", "Width"),     # thin in Y
+    "kickplate_return": ("Height", "Length", "Width"),  # thin in X, like side
 }
 
 
@@ -781,7 +793,7 @@ def parse_freecad_export(raw_output: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def techdraw_script(spec: dict, doc_name: str = "TechDraw") -> str:
+def techdraw_script(spec: dict, doc_name: str = "TechDraw", export_svg: bool = True, export_dir: str = "/tmp") -> str:
     """Generate a FreeCAD Python script that creates a TechDraw page.
 
     Produces an A3 landscape sheet with three orthographic views
@@ -911,5 +923,20 @@ def techdraw_script(spec: dict, doc_name: str = "TechDraw") -> str:
         "doc.recompute()",
         f'print("TechDraw page created for {furniture_type} with 3 views at scale", scale)',
     ])
+
+    if export_svg:
+        svg_filename = f"{doc_name}.svg"
+        svg_path = f"{export_dir.rstrip('/')}/{svg_filename}"
+        lines.extend([
+            "",
+            "# --- Export TechDraw page to SVG ---",
+            "try:",
+            "    import TechDrawGui",
+            f"    svg_path = r'{svg_path}'",
+            "    TechDrawGui.exportPageAsSvg(page, svg_path)",
+            f'    print("SVG exported to:", svg_path)',
+            "except Exception as _svg_err:",
+            f'    print("SVG export failed (GUI may not be available):", _svg_err)',
+        ])
 
     return "\n".join(lines)

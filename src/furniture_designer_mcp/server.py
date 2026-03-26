@@ -34,6 +34,8 @@ from .engine.freecad_scripts import (
 )
 from .engine.freecad_client import get_client as _get_freecad_client
 from .engine.report_generator import generate_design_report as _generate_report
+from .engine.spec_builder import build_spec_from_layout as _build_spec
+from .engine.section_mapper import map_sections as _map_sections, resolve_reference as _resolve_section
 
 logger = logging.getLogger(__name__)
 
@@ -47,13 +49,36 @@ def _spec_error_response(spec: dict) -> list[TextContent] | None:
     return None
 
 
-def _cut_parts_error_response(parts: list[dict]) -> list[TextContent] | None:
-    """Validate cut parts and return error response if invalid, None if valid."""
+def _auto_convert_cut_parts(parts: list[dict]) -> list[str]:
+    """Auto-convert spec-style fields (width_mm→width, height_mm→height) in-place.
+
+    Returns a list of warning strings for each conversion performed.
+    """
+    warnings = []
+    conversions = [("width_mm", "width"), ("height_mm", "height"), ("thickness_mm", "thickness")]
+    for part in parts:
+        for spec_field, cut_field in conversions:
+            if spec_field in part and cut_field not in part:
+                part[cut_field] = part.pop(spec_field)
+                pid = part.get("id", "?")
+                warnings.append(
+                    f"Auto-converted '{spec_field}'→'{cut_field}' in part '{pid}'."
+                )
+    return warnings
+
+
+def _cut_parts_error_response(parts: list[dict]) -> tuple[list[TextContent] | None, list[str]]:
+    """Validate cut parts and return (error_response, warnings).
+
+    Auto-converts spec-style fields before validation.
+    Returns (None, warnings) if valid, (error_response, []) if invalid.
+    """
+    convert_warnings = _auto_convert_cut_parts(parts)
     errors = validate_cut_parts(parts)
     if errors:
         text = "Parts inválidos para optimize_cuts:\n" + "\n".join(f"  - {e}" for e in errors)
-        return [TextContent(type="text", text=text)]
-    return None
+        return [TextContent(type="text", text=text)], []
+    return None, convert_warnings
 
 
 def _execute_in_freecad(code: str, description: str) -> list[TextContent]:
@@ -310,7 +335,10 @@ def design_furniture(
         depth: Total depth in cm
         material: Material key (default: melamine_16)
         options: Optional overrides — e.g. {"num_shelves": 3, "has_drawers": true,
-            "door_type": "double", "kickplate_height": 10}
+            "door_type": "double", "kickplate_height": 10,
+            "back_type": "full"|"rails"|"none",
+            "sections": [{"content": "hanging"}, {"content": "drawers+hanging", "num_drawers": 3}, {"content": "shelves", "num_shelves": 6}]}
+            Section content types: "shelves", "drawers", "hanging", "drawers+hanging", "drawers+shelves", "empty"
         compact: If true (default), return a compact summary + full JSON.
             If false, return only the full pretty-printed JSON.
 
@@ -406,7 +434,8 @@ def optimize_cuts(
         Optimization result: sheets used, piece positions, waste percentage,
         grain arrows, and a text diagram.
     """
-    if err := _cut_parts_error_response(parts):
+    err, convert_warnings = _cut_parts_error_response(parts)
+    if err:
         return err
     try:
         result = _optimize_cuts(
@@ -416,8 +445,14 @@ def optimize_cuts(
             blade_kerf=blade_kerf,
             grain_direction=grain_direction,
         )
+        # Append auto-conversion warnings to result
+        if convert_warnings:
+            existing = result.get("warnings", [])
+            result["warnings"] = existing + convert_warnings
         if compact:
             summary = _compact_cut_summary(result)
+            if convert_warnings:
+                summary = "⚠ Auto-conversión: " + "; ".join(convert_warnings) + "\n\n" + summary
             return [
                 TextContent(type="text", text=summary),
                 TextContent(type="text", text=json.dumps(result, ensure_ascii=False)),
@@ -467,6 +502,186 @@ def generate_bom(ctx: Context, spec: dict, compact: bool = True) -> list[TextCon
 # ---------------------------------------------------------------------------
 
 
+def _generate_assembly_steps(spec: dict) -> dict:
+    """Internal helper to generate assembly steps from a spec.
+
+    Returns the assembly result dict.
+    """
+    parts = spec.get("parts", [])
+    hardware = spec.get("hardware", [])
+    furniture_type = spec.get("furniture_type", "general")
+
+    steps: list[dict] = []
+    step_num = 0
+
+    # Group parts by role for assembly order
+    panels = [p for p in parts if p.get("role") in ("panel_vertical", "side")]
+    bottoms = [p for p in parts if p.get("role") in ("bottom", "floor")]
+    tops = [p for p in parts if p.get("role") in ("top", "top_panel")]
+    backs = [p for p in parts if p.get("role") == "back"]
+    shelves = [p for p in parts if p.get("role") == "shelf"]
+    rails = [p for p in parts if p.get("role") == "rail"]
+    dividers = [p for p in parts if p.get("role") == "divider"]
+    doors = [p for p in parts if p.get("role") == "door"]
+    drawer_fronts = [p for p in parts if p.get("role") == "drawer_front"]
+    drawer_sides = [p for p in parts if p.get("role") == "drawer_side"]
+    drawer_backs = [p for p in parts if p.get("role") == "drawer_back"]
+    drawer_bottoms = [p for p in parts if p.get("role") == "drawer_bottom"]
+    has_drawer_boxes = bool(drawer_sides or drawer_backs or drawer_bottoms)
+    kickplates = [p for p in parts if p.get("role") == "kickplate"]
+
+    # Step 1: Bottom to sides
+    if bottoms and panels:
+        step_num += 1
+        steps.append({
+            "step": step_num,
+            "action": "Fijar piso al lateral izquierdo",
+            "parts": [bottoms[0]["id"], panels[0]["id"]],
+            "hardware": "Tornillos confirmat 7x50mm (mín. 3)",
+            "tip": "Pre-taladrar con broca de 5mm. El piso va entre los laterales."
+        })
+
+    if len(panels) > 1 and bottoms:
+        step_num += 1
+        steps.append({
+            "step": step_num,
+            "action": "Fijar lateral derecho al piso",
+            "parts": [panels[-1]["id"], bottoms[0]["id"]],
+            "hardware": "Tornillos confirmat 7x50mm (mín. 3)",
+            "tip": "Verificar escuadra con un ángulo de 90°."
+        })
+
+    # Step 2: Dividers
+    for div in dividers:
+        step_num += 1
+        steps.append({
+            "step": step_num,
+            "action": f"Instalar división vertical '{div['id']}'",
+            "parts": [div["id"]],
+            "hardware": "Tornillos confirmat 7x50mm (2 arriba, 2 abajo)",
+            "tip": "Verificar que quede a plomo (vertical)."
+        })
+
+    # Step 3: Rails
+    for rail in rails:
+        step_num += 1
+        steps.append({
+            "step": step_num,
+            "action": f"Fijar travesaño '{rail['id']}'",
+            "parts": [rail["id"]],
+            "hardware": "Tornillos confirmat 7x50mm (2 por lado)",
+            "tip": "Los travesaños dan rigidez al mueble. No omitir."
+        })
+
+    # Step 4: Top
+    for top in tops:
+        step_num += 1
+        steps.append({
+            "step": step_num,
+            "action": f"Fijar tapa superior '{top['id']}'",
+            "parts": [top["id"]],
+            "hardware": "Tornillos confirmat 7x50mm",
+            "tip": "Asegurar que quede al ras con los laterales."
+        })
+
+    # Step 5: Back panel
+    for back in backs:
+        step_num += 1
+        steps.append({
+            "step": step_num,
+            "action": f"Fijar respaldo '{back['id']}'",
+            "parts": [back["id"]],
+            "hardware": "Clavos de 1\" o grapas cada 15cm",
+            "tip": "El respaldo cuadra el mueble. Verificar diagonales antes de fijar."
+        })
+
+    # Step 6: Shelves
+    for shelf in shelves:
+        step_num += 1
+        adjustable = shelf.get("adjustable", False)
+        steps.append({
+            "step": step_num,
+            "action": f"Colocar repisa '{shelf['id']}'",
+            "parts": [shelf["id"]],
+            "hardware": "Pernos de repisa 5mm (4 por repisa)" if adjustable else "Confirmat 7x50mm (2 por lado)",
+            "tip": "Repisa ajustable." if adjustable else "Repisa fija."
+        })
+
+    # Step 7: Kickplate
+    for kp in kickplates:
+        step_num += 1
+        steps.append({
+            "step": step_num,
+            "action": f"Instalar zócalo '{kp['id']}'",
+            "parts": [kp["id"]],
+            "hardware": "Tornillos o clips de zócalo",
+            "tip": "El zócalo va retranqueado ~5cm del frente."
+        })
+
+    # Step 8: Doors
+    for door in doors:
+        step_num += 1
+        steps.append({
+            "step": step_num,
+            "action": f"Montar puerta '{door['id']}'",
+            "parts": [door["id"]],
+            "hardware": "Bisagras de 35mm (cantidad según altura de puerta)",
+            "tip": "Perforar copa de 35mm a 2.2cm del borde. Bisagras a 10cm de extremos."
+        })
+
+    # Step 9: Drawers
+    for drawer in drawer_fronts:
+        drawer_id = drawer["id"].replace("_front", "")
+        step_num += 1
+        if has_drawer_boxes:
+            steps.append({
+                "step": step_num,
+                "action": f"Montar correderas para cajón '{drawer_id}'",
+                "parts": [],
+                "hardware": "Correderas telescópicas (par) — fijar al lateral del mueble",
+                "tip": "Montar a la altura indicada en el plano. Verificar nivel."
+            })
+            step_num += 1
+            box_parts = [p["id"] for p in drawer_sides + drawer_backs + drawer_bottoms
+                         if p["id"].startswith(drawer_id)]
+            steps.append({
+                "step": step_num,
+                "action": f"Armar caja de cajón '{drawer_id}' (fondo → laterales → trasera)",
+                "parts": box_parts,
+                "hardware": "Tornillos 4x30mm o clavos",
+                "tip": "Primero el fondo, luego laterales, por último la trasera. Verificar escuadra."
+            })
+            step_num += 1
+            steps.append({
+                "step": step_num,
+                "action": f"Fijar frente '{drawer['id']}' a la caja",
+                "parts": [drawer["id"]],
+                "hardware": "Tornillos desde interior de la caja",
+                "tip": "Alinear con holgura uniforme respecto a paneles adyacentes."
+            })
+        else:
+            steps.append({
+                "step": step_num,
+                "action": f"Instalar cajón '{drawer['id']}'",
+                "parts": [drawer["id"]],
+                "hardware": "Correderas telescópicas (par)",
+                "tip": "Montar correderas primero en laterales del mueble, luego en cajón."
+            })
+
+    return {
+        "furniture_type": furniture_type,
+        "total_steps": len(steps),
+        "steps": steps,
+        "general_tips": [
+            "Trabajar sobre superficie plana y limpia.",
+            "Pre-taladrar siempre antes de atornillar confirmat.",
+            "Verificar escuadra después de cada unión.",
+            "El respaldo es el último panel estructural — cuadra todo el mueble.",
+            "Las puertas y cajones se montan al final.",
+        ]
+    }
+
+
 @mcp.tool()
 def get_assembly_steps(ctx: Context, spec: dict, compact: bool = True) -> list[TextContent]:
     """Generate step-by-step assembly instructions for a furniture spec.
@@ -483,180 +698,7 @@ def get_assembly_steps(ctx: Context, spec: dict, compact: bool = True) -> list[T
     if err := _spec_error_response(spec):
         return err
     try:
-        parts = spec.get("parts", [])
-        hardware = spec.get("hardware", [])
-        furniture_type = spec.get("furniture_type", "general")
-
-        steps: list[dict] = []
-        step_num = 0
-
-        # Group parts by role for assembly order
-        panels = [p for p in parts if p.get("role") in ("panel_vertical", "side")]
-        bottoms = [p for p in parts if p.get("role") in ("bottom", "floor")]
-        tops = [p for p in parts if p.get("role") in ("top", "top_panel")]
-        backs = [p for p in parts if p.get("role") == "back"]
-        shelves = [p for p in parts if p.get("role") == "shelf"]
-        rails = [p for p in parts if p.get("role") == "rail"]
-        dividers = [p for p in parts if p.get("role") == "divider"]
-        doors = [p for p in parts if p.get("role") == "door"]
-        drawer_fronts = [p for p in parts if p.get("role") == "drawer_front"]
-        drawer_sides = [p for p in parts if p.get("role") == "drawer_side"]
-        drawer_backs = [p for p in parts if p.get("role") == "drawer_back"]
-        drawer_bottoms = [p for p in parts if p.get("role") == "drawer_bottom"]
-        has_drawer_boxes = bool(drawer_sides or drawer_backs or drawer_bottoms)
-        kickplates = [p for p in parts if p.get("role") == "kickplate"]
-
-        # Step 1: Bottom to sides
-        if bottoms and panels:
-            step_num += 1
-            steps.append({
-                "step": step_num,
-                "action": "Fijar piso al lateral izquierdo",
-                "parts": [bottoms[0]["id"], panels[0]["id"]],
-                "hardware": "Tornillos confirmat 7x50mm (mín. 3)",
-                "tip": "Pre-taladrar con broca de 5mm. El piso va entre los laterales."
-            })
-
-        if len(panels) > 1 and bottoms:
-            step_num += 1
-            steps.append({
-                "step": step_num,
-                "action": "Fijar lateral derecho al piso",
-                "parts": [panels[-1]["id"], bottoms[0]["id"]],
-                "hardware": "Tornillos confirmat 7x50mm (mín. 3)",
-                "tip": "Verificar escuadra con un ángulo de 90°."
-            })
-
-        # Step 2: Dividers
-        for div in dividers:
-            step_num += 1
-            steps.append({
-                "step": step_num,
-                "action": f"Instalar división vertical '{div['id']}'",
-                "parts": [div["id"]],
-                "hardware": "Tornillos confirmat 7x50mm (2 arriba, 2 abajo)",
-                "tip": "Verificar que quede a plomo (vertical)."
-            })
-
-        # Step 3: Rails
-        for rail in rails:
-            step_num += 1
-            steps.append({
-                "step": step_num,
-                "action": f"Fijar travesaño '{rail['id']}'",
-                "parts": [rail["id"]],
-                "hardware": "Tornillos confirmat 7x50mm (2 por lado)",
-                "tip": "Los travesaños dan rigidez al mueble. No omitir."
-            })
-
-        # Step 4: Top
-        for top in tops:
-            step_num += 1
-            steps.append({
-                "step": step_num,
-                "action": f"Fijar tapa superior '{top['id']}'",
-                "parts": [top["id"]],
-                "hardware": "Tornillos confirmat 7x50mm",
-                "tip": "Asegurar que quede al ras con los laterales."
-            })
-
-        # Step 5: Back panel
-        for back in backs:
-            step_num += 1
-            steps.append({
-                "step": step_num,
-                "action": f"Fijar respaldo '{back['id']}'",
-                "parts": [back["id"]],
-                "hardware": "Clavos de 1\" o grapas cada 15cm",
-                "tip": "El respaldo cuadra el mueble. Verificar diagonales antes de fijar."
-            })
-
-        # Step 6: Shelves
-        for shelf in shelves:
-            step_num += 1
-            adjustable = shelf.get("adjustable", False)
-            steps.append({
-                "step": step_num,
-                "action": f"Colocar repisa '{shelf['id']}'",
-                "parts": [shelf["id"]],
-                "hardware": "Pernos de repisa 5mm (4 por repisa)" if adjustable else "Confirmat 7x50mm (2 por lado)",
-                "tip": "Repisa ajustable." if adjustable else "Repisa fija."
-            })
-
-        # Step 7: Kickplate
-        for kp in kickplates:
-            step_num += 1
-            steps.append({
-                "step": step_num,
-                "action": f"Instalar zócalo '{kp['id']}'",
-                "parts": [kp["id"]],
-                "hardware": "Tornillos o clips de zócalo",
-                "tip": "El zócalo va retranqueado ~5cm del frente."
-            })
-
-        # Step 8: Doors
-        for door in doors:
-            step_num += 1
-            steps.append({
-                "step": step_num,
-                "action": f"Montar puerta '{door['id']}'",
-                "parts": [door["id"]],
-                "hardware": "Bisagras de 35mm (cantidad según altura de puerta)",
-                "tip": "Perforar copa de 35mm a 2.2cm del borde. Bisagras a 10cm de extremos."
-            })
-
-        # Step 9: Drawers
-        for drawer in drawer_fronts:
-            # Extract drawer group ID (e.g., "drawer_1" from "drawer_1_front")
-            drawer_id = drawer["id"].replace("_front", "")
-            step_num += 1
-            if has_drawer_boxes:
-                steps.append({
-                    "step": step_num,
-                    "action": f"Montar correderas para cajón '{drawer_id}'",
-                    "parts": [],
-                    "hardware": "Correderas telescópicas (par) — fijar al lateral del mueble",
-                    "tip": "Montar a la altura indicada en el plano. Verificar nivel."
-                })
-                step_num += 1
-                box_parts = [p["id"] for p in drawer_sides + drawer_backs + drawer_bottoms
-                             if p["id"].startswith(drawer_id)]
-                steps.append({
-                    "step": step_num,
-                    "action": f"Armar caja de cajón '{drawer_id}' (fondo → laterales → trasera)",
-                    "parts": box_parts,
-                    "hardware": "Tornillos 4x30mm o clavos",
-                    "tip": "Primero el fondo, luego laterales, por último la trasera. Verificar escuadra."
-                })
-                step_num += 1
-                steps.append({
-                    "step": step_num,
-                    "action": f"Fijar frente '{drawer['id']}' a la caja",
-                    "parts": [drawer["id"]],
-                    "hardware": "Tornillos desde interior de la caja",
-                    "tip": "Alinear con holgura uniforme respecto a paneles adyacentes."
-                })
-            else:
-                steps.append({
-                    "step": step_num,
-                    "action": f"Instalar cajón '{drawer['id']}'",
-                    "parts": [drawer["id"]],
-                    "hardware": "Correderas telescópicas (par)",
-                    "tip": "Montar correderas primero en laterales del mueble, luego en cajón."
-                })
-
-        result = {
-            "furniture_type": furniture_type,
-            "total_steps": len(steps),
-            "steps": steps,
-            "general_tips": [
-                "Trabajar sobre superficie plana y limpia.",
-                "Pre-taladrar siempre antes de atornillar confirmat.",
-                "Verificar escuadra después de cada unión.",
-                "El respaldo es el último panel estructural — cuadra todo el mueble.",
-                "Las puertas y cajones se montan al final.",
-            ]
-        }
+        result = _generate_assembly_steps(spec)
         if compact:
             summary = _compact_assembly_summary(result)
             return [
@@ -777,10 +819,100 @@ def build_cut_diagram(
 
 
 @mcp.tool()
+def build_spec(
+    ctx: Context,
+    layout: dict,
+    compact: bool = True,
+) -> list[TextContent]:
+    """Build a complete furniture spec from a high-level layout description.
+
+    This is a convenience tool that eliminates the need to manually calculate
+    mm positions, slide clearances, kickplate offsets, etc. Just describe
+    the furniture in columns and rows.
+
+    Args:
+        layout: High-level description with columns and rows. Example:
+            {
+                "furniture_type": "closet",
+                "width_cm": 240, "height_cm": 240, "depth_cm": 60,
+                "material": "melamine_16",
+                "kickplate_height_cm": 10,
+                "back_type": "full",
+                "columns": [
+                    {
+                        "width_cm": 80,
+                        "rows": [
+                            {"type": "hanging_bar", "height_cm": 160},
+                        ]
+                    },
+                    {
+                        "width_cm": "auto",
+                        "rows": [
+                            {"type": "drawers", "count": 3, "drawer_height_mm": 140},
+                            {"type": "hanging_bar", "height_cm": 160},
+                        ]
+                    },
+                    {
+                        "width_cm": "auto",
+                        "rows": [
+                            {"type": "shelves", "count": 6},
+                        ]
+                    }
+                ]
+            }
+            Column width_cm can be a number or "auto" (distributes remaining space).
+            Row types: "shelf", "shelves", "drawers", "hanging_bar", "empty".
+        compact: If true (default), return compact summary + full JSON.
+
+    Returns:
+        Complete furniture spec ready for validate_structure, generate_bom,
+        optimize_cuts, build_3d_model, etc.
+    """
+    try:
+        spec = _build_spec(layout)
+    except (ValueError, KeyError) as e:
+        return [TextContent(type="text", text=f"Error en layout: {e}")]
+    except Exception as e:
+        logger.exception("build_spec failed")
+        return [TextContent(type="text", text=f"Error building spec: {e}")]
+
+    spec_json = json.dumps(spec, indent=2, ensure_ascii=False)
+
+    if not compact:
+        return [TextContent(type="text", text=spec_json)]
+
+    # Compact summary
+    parts = spec.get("parts", [])
+    from collections import Counter
+    role_counts = Counter(p["role"] for p in parts)
+    role_summary = ", ".join(f"{v}× {k}" for k, v in role_counts.most_common())
+
+    hw_count = len(spec.get("hardware", []))
+    notes_summary = " | ".join(spec.get("notes", []))
+
+    dims = spec.get("dimensions_cm", {})
+    summary = (
+        f"Spec generado: {spec.get('furniture_type', '?')} "
+        f"{dims.get('width', '?')}×{dims.get('height', '?')}×{dims.get('depth', '?')}cm "
+        f"({spec.get('material', '?')})\n"
+        f"Partes: {len(parts)} ({role_summary})\n"
+        f"Hardware: {hw_count} items\n"
+        f"Notas: {notes_summary}"
+    )
+
+    return [
+        TextContent(type="text", text=summary),
+        TextContent(type="text", text=spec_json),
+    ]
+
+
+@mcp.tool()
 def build_techdraw(
     ctx: Context,
     spec: dict,
     doc_name: str = "TechDraw",
+    export_svg: bool = True,
+    export_dir: str = "/tmp",
 ) -> list[TextContent]:
     """Build a TechDraw technical drawing in FreeCAD.
 
@@ -796,18 +928,24 @@ def build_techdraw(
     Args:
         spec: A furniture spec as returned by design_furniture.
         doc_name: Name for the FreeCAD document (default: "TechDraw").
+        export_svg: If true (default), export the TechDraw page to SVG.
+        export_dir: Directory for SVG export (default: "/tmp").
 
     Returns:
-        Summary of what was built.
+        Summary of what was built, including SVG path if exported.
     """
     if err := _spec_error_response(spec):
         return err
     try:
-        code = _techdraw_script(spec, doc_name=doc_name)
+        code = _techdraw_script(spec, doc_name=doc_name, export_svg=export_svg, export_dir=export_dir)
         n_parts = len(spec.get("parts", []))
+        svg_info = ""
+        if export_svg:
+            svg_path = f"{export_dir.rstrip('/')}/{doc_name}.svg"
+            svg_info = f" SVG exportado a: {svg_path}"
         return _execute_in_freecad(
             code,
-            f"Plano técnico TechDraw creado: {n_parts} paneles, formato A3 en documento '{doc_name}'.",
+            f"Plano técnico TechDraw creado: {n_parts} paneles, formato A3 en documento '{doc_name}'.{svg_info}",
         )
     except Exception as e:
         logger.exception("build_techdraw failed")
@@ -883,6 +1021,186 @@ def parse_freecad_import(
 
 
 # ---------------------------------------------------------------------------
+# Multi-design tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def create_design(
+    ctx: Context,
+    name: str,
+    furniture_type: str,
+) -> list[TextContent]:
+    """Create a new design project.
+
+    Sets up a directory with metadata for a new furniture design. Use this
+    before calling update_design_report with a design_id.
+
+    Args:
+        name: Human-readable name (e.g., "Closet Dormitorio Principal").
+        furniture_type: One of: kitchen_base, kitchen_wall, closet, bookshelf, desk, vanity.
+
+    Returns:
+        Design ID, path, and URL (if server is running).
+    """
+    from .engine.design_store import get_store
+
+    store = get_store()
+    result = store.create(name, furniture_type)
+
+    # Check if server is running
+    try:
+        from .engine.http_server import get_server
+        server = get_server()
+        if server.is_running:
+            result["url"] = server.get_url(result["design_id"])
+    except Exception:
+        pass
+
+    return [TextContent(
+        type="text",
+        text=f"Diseño creado: {result['design_id']}\n"
+             f"Ruta: {result['path']}\n"
+             + (f"URL: {result.get('url', 'servidor no iniciado')}" ),
+    )]
+
+
+@mcp.tool()
+def list_designs(ctx: Context) -> list[TextContent]:
+    """List all active furniture designs with metadata.
+
+    Returns:
+        List of designs with name, type, iteration count, and timestamps.
+    """
+    from .engine.design_store import get_store
+
+    store = get_store()
+    designs = store.list_designs()
+
+    if not designs:
+        return [TextContent(type="text", text="No hay diseños activos. Usa create_design para comenzar.")]
+
+    lines = [f"📁 {len(designs)} diseño(s) activo(s):\n"]
+    for d in designs:
+        status = "✅" if d.get("has_report") else "⬜"
+        lines.append(
+            f"  {status} {d.get('design_id', '?')} — {d.get('name', '?')} "
+            f"({d.get('type', '?')}) · v{d.get('iterations_count', 0)} · "
+            f"actualizado {d.get('updated', '?')}"
+        )
+
+    return [TextContent(type="text", text="\n".join(lines))]
+
+
+@mcp.tool()
+def get_design_context(
+    ctx: Context,
+    design_id: str,
+) -> list[TextContent]:
+    """Retrieve the full context of a design for resuming work.
+
+    Returns the latest spec, metadata, and iteration history so the agent
+    can continue from where the user left off.
+
+    Args:
+        design_id: The design identifier (slug).
+
+    Returns:
+        Spec JSON + metadata + iteration summary.
+    """
+    from .engine.design_store import get_store
+
+    store = get_store()
+    if not store.design_exists(design_id):
+        return [TextContent(type="text", text=f"Diseño '{design_id}' no encontrado.")]
+
+    meta = store.get_metadata(design_id)
+    spec = store.get_spec(design_id)
+
+    summary_parts = []
+    if meta:
+        summary_parts.append(
+            f"Diseño: {meta.get('name', design_id)}\n"
+            f"Tipo: {meta.get('type', '?')}\n"
+            f"Iteraciones: {meta.get('iterations_count', 0)}\n"
+            f"Creado: {meta.get('created', '?')}\n"
+            f"Actualizado: {meta.get('updated', '?')}"
+        )
+
+    result = [TextContent(type="text", text="\n".join(summary_parts) if summary_parts else "Sin metadata.")]
+
+    if spec:
+        compact = _compact_spec_summary(spec)
+        result.append(TextContent(type="text", text=compact))
+        result.append(TextContent(type="text", text=json.dumps(spec, ensure_ascii=False)))
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Design server tool
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def start_design_server(
+    ctx: Context,
+    port: int = 8432,
+    designs_dir: str = "./designs",
+) -> list[TextContent]:
+    """Start the local HTTP server for serving design reports with live reload.
+
+    The server provides:
+    - Index page listing all designs at http://localhost:{port}/
+    - Individual design reports at http://localhost:{port}/{design_id}
+    - WebSocket for live reload at ws://localhost:{port}/ws/{design_id}
+    - JSON spec API at http://localhost:{port}/api/{design_id}/spec
+
+    Args:
+        port: HTTP port (default: 8432). Falls back to random port if busy.
+        designs_dir: Directory for design files (default: ./designs).
+
+    Returns:
+        Server URL and status.
+    """
+    from .engine.http_server import get_server
+
+    server = get_server(port=port, designs_dir=designs_dir)
+    if server.is_running:
+        return [TextContent(
+            type="text",
+            text=f"Servidor ya activo en {server.get_base_url()}",
+        )]
+
+    import asyncio
+
+    async def _start():
+        return await server.start()
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # Schedule in the running loop (MCP uses asyncio)
+            future = asyncio.ensure_future(server.start())
+            # We can't await here in a sync tool, so we start it as a task
+            # The server will be ready almost immediately
+            url = server.get_base_url()
+        else:
+            url = loop.run_until_complete(server.start())
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        url = loop.run_until_complete(server.start())
+
+    return [TextContent(
+        type="text",
+        text=f"Servidor de diseño iniciado en {url}\n"
+             f"Directorio de diseños: {server.designs_dir}\n"
+             f"Abre {url} en tu navegador para ver los diseños.",
+    )]
+
+
+# ---------------------------------------------------------------------------
 # Design report tool
 # ---------------------------------------------------------------------------
 
@@ -893,34 +1211,76 @@ def update_design_report(
     spec: dict,
     comment: str = "",
     iteration_name: str = "",
+    design_id: str | None = None,
     output_path: str | None = None,
+    cut_data: dict | None = None,
 ) -> list[TextContent]:
     """Generate or update an interactive HTML design report.
 
     Creates a self-contained HTML file with 3D visualization (Three.js),
-    schematic blueprint aesthetic, iteration comparison slider, and
-    clickable panels with dimensions.
+    iteration comparison slider, and clickable panels with dimensions.
 
-    If the output file already exists, appends a new iteration preserving
-    the full design history.
+    If design_id is provided, uses the DesignStore (recommended for
+    multi-design workflows with live reload). Otherwise falls back to
+    output_path for backward compatibility.
 
     Args:
         spec: A furniture spec as returned by design_furniture.
         comment: Description of this iteration's changes (e.g. "Added drawer").
         iteration_name: Label for this version (e.g. "v2"). Auto-generated if omitted.
-        output_path: Path for the HTML file. Defaults to ./design_report.html.
+        design_id: Design identifier from create_design. If set, uses DesignStore.
+        output_path: Path for the HTML file. Only used if design_id is not set.
+            Defaults to ./design_report.html.
+        cut_data: Optional cut optimization result from optimize_cuts.
 
     Returns:
-        Path to the generated HTML report file.
+        Path to the generated HTML report file and URL if server is running.
     """
     if err := _spec_error_response(spec):
         return err
     try:
+        # Route: DesignStore (multi-design with live reload)
+        if design_id:
+            from .engine.design_store import get_store
+
+            store = get_store()
+            if not store.design_exists(design_id):
+                return [TextContent(type="text",
+                    text=f"Diseño '{design_id}' no encontrado. Usa create_design primero.")]
+
+            result = store.save_iteration(
+                design_id=design_id,
+                spec=spec,
+                comment=comment,
+                iteration_name=iteration_name,
+                cut_data=cut_data,
+            )
+
+            # Notify WebSocket clients for live reload
+            url_info = ""
+            try:
+                from .engine.http_server import get_server
+                import asyncio
+
+                server = get_server()
+                if server.is_running:
+                    url_info = f"\nURL: {server.get_url(design_id)}"
+                    asyncio.ensure_future(server.notify_update(design_id))
+            except Exception:
+                pass
+
+            return [TextContent(
+                type="text",
+                text=f"Reporte actualizado: {result['iteration']} — {result['report_path']}{url_info}",
+            )]
+
+        # Route: Direct file (backward compatible)
         path = _generate_report(
             spec=spec,
             comment=comment,
             iteration_name=iteration_name,
             output_path=output_path,
+            cut_data=cut_data,
         )
         return [TextContent(
             type="text",
@@ -929,6 +1289,189 @@ def update_design_report(
     except Exception as e:
         logger.exception("update_design_report failed")
         return [TextContent(type="text", text=f"Error generating report: {e}")]
+
+
+# ---------------------------------------------------------------------------
+# Full report tool (design → validate → BOM → cuts → assembly → report)
+# ---------------------------------------------------------------------------
+
+
+def _spec_to_cut_parts(spec: dict) -> list[dict]:
+    """Convert spec parts to the format expected by optimize_cuts."""
+    cut_parts = []
+    t = spec.get("material_thickness_mm", 18)
+    for p in spec.get("parts", []):
+        role = p.get("role", "")
+        # Skip MDF/thin panels — they are cut from different stock
+        if role in ("back", "drawer_bottom") or p.get("thickness_mm", t) < t:
+            continue
+        grain = "length"
+        can_rotate = True
+        if role in ("side", "divider"):
+            can_rotate = False
+        cut_parts.append({
+            "id": p["id"],
+            "width": p["width_mm"],
+            "height": p["height_mm"],
+            "qty": 1,
+            "can_rotate": can_rotate,
+            "grain": grain,
+        })
+    return cut_parts
+
+
+@mcp.tool()
+def generate_full_report(
+    ctx: Context,
+    furniture_type: str,
+    width: float,
+    height: float,
+    depth: float,
+    material: str = "melamine_16",
+    options: dict | None = None,
+    comment: str = "",
+    iteration_name: str = "",
+    output_path: str | None = None,
+) -> list[TextContent]:
+    """Design furniture and generate a complete report in one step.
+
+    Runs the full pipeline: design → validate → BOM → cut optimization →
+    assembly instructions → interactive HTML report with all tabs populated.
+
+    Args:
+        furniture_type: One of: kitchen_base, kitchen_wall, closet, bookshelf,
+            desk, vanity
+        width: Total width in cm
+        height: Total height in cm
+        depth: Total depth in cm
+        material: Material key (default: melamine_16)
+        options: Optional overrides (same as design_furniture options)
+        comment: Description for this iteration
+        iteration_name: Label for this version (auto-generated if omitted)
+        output_path: Path for the HTML file. Defaults to ./design_report.html.
+
+    Returns:
+        Summary of the full pipeline results and path to the HTML report.
+    """
+    try:
+        # 1. Design
+        spec = generate_furniture_spec(
+            furniture_type=furniture_type,
+            width=width, height=height, depth=depth,
+            material=material,
+            options=options,
+        )
+
+        # 2. Validate
+        validation = _validate(spec)
+
+        # 3. BOM
+        bom = _generate_bom(spec)
+
+        # 4. Cut optimization
+        cut_parts = _spec_to_cut_parts(spec)
+        cut_result = _optimize_cuts(parts=cut_parts)
+
+        # 5. Assembly
+        assembly = _generate_assembly_steps(spec)
+
+        # 6. Embed extra data in spec for report
+        spec["cut_data"] = cut_result
+        spec["bom_data"] = bom
+        spec["assembly_data"] = assembly
+
+        # 7. Generate report
+        path = _generate_report(
+            spec=spec,
+            comment=comment,
+            iteration_name=iteration_name,
+            output_path=output_path,
+        )
+
+        # Build summary
+        dims = spec.get("dimensions_cm", {})
+        parts = spec.get("parts", [])
+        v_status = validation.get("status", "?")
+        v_errors = len(validation.get("errors", []))
+        v_warnings = len(validation.get("warnings", []))
+        sheets = cut_result.get("sheets_needed", "?")
+        waste = cut_result.get("waste_percentage", "?")
+        n_steps = assembly.get("total_steps", "?")
+        edge_m = bom.get("edge_banding", {}).get("total_meters", "?")
+
+        summary = (
+            f"Reporte completo generado: {path}\n"
+            f"  Mueble: {furniture_type} {dims.get('width','?')}×{dims.get('height','?')}×{dims.get('depth','?')}cm ({material})\n"
+            f"  Validación: {v_status} ({v_errors} errores, {v_warnings} advertencias)\n"
+            f"  Partes: {len(parts)} | Canteado: {edge_m}m\n"
+            f"  Corte: {sheets} tableros, {waste}% desperdicio\n"
+            f"  Ensamble: {n_steps} pasos"
+        )
+
+        return [TextContent(type="text", text=summary)]
+
+    except Exception as e:
+        logger.exception("generate_full_report failed")
+        return [TextContent(type="text", text=f"Error: {e}")]
+
+
+# ---------------------------------------------------------------------------
+# Section mapper tool
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_section_map(
+    ctx: Context,
+    design_id: str = "",
+    spec: str = "",
+    resolve: str = "",
+) -> list[TextContent]:
+    """Get or resolve section labels from a furniture spec.
+
+    Analyzes dividers in a spec to identify sections (S1, S2, …) with
+    human-readable labels and aliases for natural language resolution.
+
+    Args:
+        design_id: Load spec from a saved design (alternative to passing spec).
+        spec: JSON string of a furniture spec (alternative to design_id).
+        resolve: Optional natural language text to resolve to a section ID
+                 (e.g. "izquierda", "centro", "S2").
+
+    Returns:
+        Section map with labels, aliases, boundaries, and parts per section.
+        If resolve is provided, also includes the matched section ID.
+    """
+    # Get spec from design_id or inline
+    spec_data = None
+    if design_id:
+        from .engine.design_store import get_store
+        spec_data = get_store().get_spec(design_id)
+        if spec_data is None:
+            return [TextContent(type="text", text=f"❌ Design '{design_id}' not found or has no spec.")]
+    elif spec:
+        try:
+            spec_data = json.loads(spec)
+        except json.JSONDecodeError as e:
+            return [TextContent(type="text", text=f"❌ Invalid JSON: {e}")]
+    else:
+        return [TextContent(type="text", text="❌ Provide either design_id or spec.")]
+
+    # Generate section map
+    section_labels = _map_sections(spec_data)
+
+    result = {"section_labels": section_labels}
+
+    # Resolve reference if requested
+    if resolve:
+        matched = _resolve_section(section_labels, resolve)
+        result["resolved"] = {
+            "input": resolve,
+            "section_id": matched,
+            "section_info": section_labels.get(matched) if matched else None,
+        }
+
+    return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
 
 
 # ---------------------------------------------------------------------------
@@ -956,6 +1499,8 @@ def reload_engine(ctx: Context) -> list[TextContent]:
         freecad_scripts as _mod_freecad_scripts,
         freecad_client as _mod_freecad_client,
         report_generator as _mod_report_generator,
+        spec_builder as _mod_spec_builder,
+        section_mapper as _mod_section_mapper,
     )
 
     module_list = [
@@ -967,6 +1512,8 @@ def reload_engine(ctx: Context) -> list[TextContent]:
         _mod_freecad_scripts,
         _mod_freecad_client,
         _mod_report_generator,
+        _mod_spec_builder,
+        _mod_section_mapper,
     ]
 
     reloaded_names = []
@@ -1005,6 +1552,13 @@ def reload_engine(ctx: Context) -> list[TextContent]:
 
     global _generate_report
     _generate_report = _mod_report_generator.generate_design_report
+
+    global _build_spec
+    _build_spec = _mod_spec_builder.build_spec_from_layout
+
+    global _map_sections, _resolve_section
+    _map_sections = _mod_section_mapper.map_sections
+    _resolve_section = _mod_section_mapper.resolve_reference
 
     return [TextContent(
         type="text",

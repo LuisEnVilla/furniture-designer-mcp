@@ -1,0 +1,1968 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design Report — Furniture Designer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   DESIGN TOKENS — Light Minimal
+   ============================================================ */
+:root {
+    --bg-base: #f8f9fb;
+    --bg-white: #ffffff;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f3f4f6;
+    --bg-subtle: #f1f3f5;
+    --bg-input: #f8f9fb;
+    --bg-viewport: #f0f2f5;
+
+    --accent: #2563eb;
+    --accent-light: rgba(37, 99, 235, 0.08);
+    --accent-medium: rgba(37, 99, 235, 0.15);
+    --accent-green: #059669;
+    --accent-amber: #d97706;
+    --accent-red: #dc2626;
+
+    --text-primary: #111827;
+    --text-secondary: #4b5563;
+    --text-dim: #9ca3af;
+    --text-muted: #d1d5db;
+
+    --border: #e5e7eb;
+    --border-strong: #d1d5db;
+    --border-focus: var(--accent);
+
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.08);
+
+    --radius: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+}
+
+/* ============================================================
+   RESET & BASE
+   ============================================================ */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    background: var(--bg-base);
+    font-family: 'DM Sans', -apple-system, sans-serif;
+    color: var(--text-primary);
+    height: 100vh;
+    overflow: hidden;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+code, .mono {
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+}
+
+/* ============================================================
+   SCROLLBAR
+   ============================================================ */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+
+/* ============================================================
+   LAYOUT
+   ============================================================ */
+#app {
+    display: grid;
+    grid-template-rows: 56px 1fr;
+    grid-template-columns: 1fr;
+    height: 100vh;
+}
+
+/* ============================================================
+   HEADER — Product card header
+   ============================================================ */
+#header {
+    background: var(--bg-white);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 16px;
+    z-index: 20;
+    box-shadow: var(--shadow-sm);
+}
+.header-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.header-logo {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius);
+    background: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 15px;
+    font-weight: 600;
+}
+.header-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+}
+.header-sep {
+    width: 1px;
+    height: 24px;
+    background: var(--border);
+}
+.header-design-name {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+.header-design-meta {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 400;
+}
+
+/* Nav tabs in header */
+.header-nav {
+    display: flex;
+    gap: 2px;
+    margin-left: 32px;
+    background: var(--bg-subtle);
+    padding: 3px;
+    border-radius: var(--radius);
+}
+.nav-btn {
+    padding: 6px 16px;
+    border: none;
+    background: none;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.nav-btn:hover { color: var(--text-primary); }
+.nav-btn.active {
+    background: var(--bg-white);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Version pill */
+.version-pill {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.version-pill label {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-weight: 500;
+}
+#iter-slider {
+    -webkit-appearance: none;
+    width: 100px;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+}
+#iter-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--bg-white);
+    box-shadow: 0 0 0 1px var(--accent), var(--shadow-sm);
+}
+#iter-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+    min-width: 24px;
+}
+
+/* Status dot */
+.status-live {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--accent-green);
+    font-weight: 500;
+}
+.status-live::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* ============================================================
+   MAIN CONTENT AREA
+   ============================================================ */
+#main-content {
+    overflow: hidden;
+    position: relative;
+}
+
+/* ============================================================
+   PAGE: DESIGN (3D assembled view)
+   ============================================================ */
+.page { display: none; height: 100%; }
+.page.active { display: flex; }
+
+/* -- Design page: viewport left, summary right -- */
+#page-design {
+    flex-direction: row;
+}
+.viewport-area {
+    flex: 1;
+    position: relative;
+    background: var(--bg-viewport);
+    overflow: hidden;
+}
+.viewport-area canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* Viewport overlay badges */
+.viewport-badge {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    display: flex;
+    gap: 6px;
+}
+.badge {
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    box-shadow: var(--shadow-sm);
+}
+.badge strong { color: var(--text-primary); font-weight: 600; }
+
+/* Section labels */
+.section-label {
+    position: absolute;
+    bottom: 54px;
+    padding: 4px 12px;
+    background: rgba(255,255,255,0.9);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    box-shadow: var(--shadow-sm);
+}
+.section-label:hover {
+    border-color: var(--accent);
+    background: var(--accent-light);
+}
+
+/* -- Summary sidebar (product card style) -- */
+.summary-panel {
+    width: 340px;
+    background: var(--bg-white);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 24px;
+}
+.summary-section {
+    margin-bottom: 24px;
+}
+.summary-section:last-child { margin-bottom: 0; }
+.section-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+/* Spec grid */
+.spec-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+.spec-item {
+    background: var(--bg-subtle);
+    border-radius: var(--radius);
+    padding: 12px;
+}
+.spec-item.wide { grid-column: span 2; }
+.spec-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 4px;
+}
+.spec-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+.spec-value.sm { font-size: 14px; }
+.spec-value.xs { font-size: 12px; color: var(--text-secondary); }
+.spec-unit {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-weight: 400;
+}
+
+/* Role breakdown */
+.role-list { list-style: none; }
+.role-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--bg-subtle);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.role-row:hover { background: var(--bg-subtle); margin: 0 -12px; padding: 8px 12px; border-radius: 6px; }
+.role-row:last-child { border-bottom: none; }
+.role-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+.role-name {
+    flex: 1;
+    color: var(--text-secondary);
+}
+.role-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 500;
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+/* Hardware list */
+.hw-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    font-size: 13px;
+    border-bottom: 1px solid var(--bg-subtle);
+}
+.hw-row:last-child { border-bottom: none; }
+.hw-name { color: var(--text-secondary); }
+.hw-qty { font-family: 'JetBrains Mono', monospace; font-weight: 500; color: var(--text-primary); }
+
+/* Notes */
+.note-item {
+    font-size: 13px;
+    color: var(--text-secondary);
+    padding: 6px 0;
+    border-bottom: 1px solid var(--bg-subtle);
+    line-height: 1.6;
+}
+.note-item:last-child { border-bottom: none; }
+.note-icon {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    text-align: center;
+    margin-right: 6px;
+    font-size: 12px;
+}
+
+/* ============================================================
+   PAGE: PARTS (Exploded 3D + parts table + assembly)
+   ============================================================ */
+#page-parts {
+    flex-direction: row;
+}
+.parts-sidebar {
+    width: 420px;
+    background: var(--bg-white);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.parts-sidebar-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+/* Parts search */
+.parts-search {
+    width: 100%;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+    margin-bottom: 16px;
+    transition: border-color 0.15s;
+}
+.parts-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+.parts-search::placeholder { color: var(--text-muted); }
+
+/* Parts table */
+.parts-table {
+    width: 100%;
+    font-size: 13px;
+    border-collapse: collapse;
+    margin-bottom: 32px;
+}
+.parts-table th {
+    text-align: left;
+    padding: 8px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+    border-bottom: 2px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--bg-white);
+}
+.parts-table td {
+    padding: 8px 8px;
+    border-bottom: 1px solid var(--bg-subtle);
+    color: var(--text-secondary);
+}
+.parts-table tr[data-id] {
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.parts-table tr[data-id]:hover { background: var(--bg-subtle); }
+.parts-table tr.selected {
+    background: var(--accent-light);
+}
+.parts-table tr.selected td { color: var(--accent); font-weight: 500; }
+.part-role-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 3px;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+/* Exploded view label */
+.viewport-label {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    box-shadow: var(--shadow-sm);
+}
+.viewport-label .label-tag {
+    display: inline-block;
+    background: var(--accent-light);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-left: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* ============================================================
+   ASSEMBLY GUIDE (below parts table)
+   ============================================================ */
+.assembly-section {
+    border-top: 2px solid var(--border);
+    padding-top: 20px;
+}
+.assembly-step {
+    display: flex;
+    gap: 14px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--bg-subtle);
+}
+.assembly-step:last-child { border-bottom: none; }
+.step-number {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--accent-light);
+    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.step-content {
+    flex: 1;
+}
+.step-title {
+    font-weight: 500;
+    color: var(--text-primary);
+    font-size: 13px;
+    margin-bottom: 3px;
+}
+.step-detail {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.5;
+}
+.step-hardware {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--bg-subtle);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+/* ============================================================
+   PAGE: CUTS (full-width, no 3D)
+   ============================================================ */
+#page-cuts {
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 32px 48px;
+    background: var(--bg-base);
+}
+
+.cuts-header {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    margin-bottom: 28px;
+}
+.cuts-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.cuts-stats {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+.cut-stat-pill {
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 20px;
+    text-align: center;
+    box-shadow: var(--shadow-sm);
+}
+.cut-stat-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.cut-stat-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+    font-weight: 500;
+    margin-top: 2px;
+}
+
+.sheets-list {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+.sheet-card {
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+.sheet-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-subtle);
+}
+.sheet-card-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+.sheet-card-meta {
+    display: flex;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--text-dim);
+}
+.sheet-card-meta strong { color: var(--text-primary); font-weight: 600; }
+.sheet-card-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+}
+.sheet-visual {
+    padding: 20px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.sheet-svg {
+    width: 100%;
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+.sheet-details {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Piece colors for SVGs */
+.piece-side { fill: rgba(180,140,100,0.25); stroke: rgb(180,140,100); }
+.piece-bottom { fill: rgba(160,130,100,0.25); stroke: rgb(160,130,100); }
+.piece-divider { fill: rgba(200,160,80,0.25); stroke: rgb(200,160,80); }
+.piece-shelf { fill: rgba(80,160,100,0.25); stroke: rgb(80,160,100); }
+.piece-back { fill: rgba(160,160,160,0.2); stroke: rgb(160,160,160); }
+.piece-door { fill: rgba(80,130,200,0.25); stroke: rgb(80,130,200); }
+.piece-rail { fill: rgba(140,115,85,0.25); stroke: rgb(140,115,85); }
+.piece-kickplate { fill: rgba(120,120,120,0.2); stroke: rgb(120,120,120); }
+.piece-drawer { fill: rgba(80,130,200,0.25); stroke: rgb(80,130,200); }
+
+/* Sheet pieces table */
+.sheet-pieces-table {
+    width: 100%;
+    font-size: 12px;
+    border-collapse: collapse;
+    flex: 1;
+}
+.sheet-pieces-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-subtle);
+    position: sticky;
+    top: 0;
+}
+.sheet-pieces-table td {
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--bg-subtle);
+    color: var(--text-secondary);
+}
+.sheet-pieces-table tr:last-child td { border-bottom: none; }
+.sheet-pieces-table .mono {
+    font-size: 11px;
+}
+
+/* Edge banding indicator */
+.edge-band {
+    display: inline-flex;
+    gap: 3px;
+}
+.edge-indicator {
+    width: 18px;
+    height: 18px;
+    position: relative;
+    display: inline-block;
+}
+.edge-indicator svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Usage bar */
+.sheet-usage-bar {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg-subtle);
+}
+.usage-track {
+    flex: 1;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.usage-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+.usage-fill.good { background: var(--accent-green); }
+.usage-fill.ok { background: var(--accent-amber); }
+.usage-fill.bad { background: var(--accent-red); }
+.usage-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+/* Legend */
+.cuts-legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+.legend-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+}
+/* Edge banding legend */
+.edge-legend {
+    display: flex;
+    gap: 20px;
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--text-dim);
+}
+.edge-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.edge-legend-line {
+    width: 16px;
+    height: 3px;
+    border-radius: 1px;
+}
+.edge-legend-line.active { background: var(--accent); }
+.edge-legend-line.inactive { background: var(--border); }
+
+/* ============================================================
+   PAGE: HISTORY
+   ============================================================ */
+#page-history {
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 32px 48px;
+    max-width: 720px;
+    margin: 0 auto;
+    width: 100%;
+}
+.history-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 24px;
+}
+.timeline {
+    position: relative;
+    padding-left: 28px;
+}
+.timeline::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    background: var(--border);
+    border-radius: 1px;
+}
+.history-item {
+    position: relative;
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 18px 20px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    box-shadow: var(--shadow-sm);
+}
+.history-item:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
+.history-item.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-light);
+}
+.history-item::before {
+    content: '';
+    position: absolute;
+    left: -24px;
+    top: 22px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--border);
+    border: 2px solid var(--bg-base);
+}
+.history-item.active::before {
+    background: var(--accent);
+}
+.history-header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+.history-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.history-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-left: auto;
+}
+.history-comment {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+.history-changes {
+    margin-top: 8px;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.change-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-weight: 500;
+}
+.change-badge.added {
+    background: rgba(5, 150, 105, 0.08);
+    color: var(--accent-green);
+    border: 1px solid rgba(5, 150, 105, 0.2);
+}
+.change-badge.removed {
+    background: rgba(220, 38, 38, 0.06);
+    color: var(--accent-red);
+    border: 1px solid rgba(220, 38, 38, 0.15);
+}
+.change-badge.modified {
+    background: rgba(217, 119, 6, 0.08);
+    color: var(--accent-amber);
+    border: 1px solid rgba(217, 119, 6, 0.15);
+}
+.history-stats {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 8px;
+}
+
+/* ============================================================
+   TOOLTIP
+   ============================================================ */
+#tooltip {
+    position: fixed;
+    display: none;
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 14px 18px;
+    font-size: 13px;
+    z-index: 100;
+    pointer-events: none;
+    max-width: 280px;
+    box-shadow: var(--shadow-lg);
+}
+.tt-title {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+.tt-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 3px 0;
+}
+.tt-label { color: var(--text-dim); font-size: 12px; }
+.tt-value {
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+}
+</style>
+</head>
+<body>
+<div id="app">
+    <!-- ============================================================
+         HEADER
+         ============================================================ -->
+    <header id="header">
+        <div class="header-brand">
+            <div class="header-logo">FD</div>
+            <div>
+                <div class="header-title">Closet Dormitorio Principal</div>
+                <div class="header-design-meta">closet · 208×231.5×59 cm · melamine_18</div>
+            </div>
+        </div>
+
+        <nav class="header-nav">
+            <button class="nav-btn active" data-page="design">Diseño</button>
+            <button class="nav-btn" data-page="parts">Partes</button>
+            <button class="nav-btn" data-page="cuts">Cortes</button>
+            <button class="nav-btn" data-page="history">Historial</button>
+        </nav>
+
+        <div class="version-pill">
+            <label>Iteración</label>
+            <input type="range" id="iter-slider" min="0" max="2" value="2">
+            <span id="iter-label">v3</span>
+        </div>
+
+        <div class="status-live">Live</div>
+    </header>
+
+    <!-- ============================================================
+         MAIN CONTENT
+         ============================================================ -->
+    <div id="main-content">
+
+        <!-- ======== PAGE: DESIGN (assembled 3D + summary) ======== -->
+        <div id="page-design" class="page active">
+            <div class="viewport-area" id="viewport-design">
+                <!-- Section labels -->
+                <div class="section-label" style="left: 18%">S1 · Izquierda</div>
+                <div class="section-label" style="left: 48%">S2 · Centro</div>
+                <div class="section-label" style="left: 75%">S3 · Derecha</div>
+
+                <!-- Dimension badges -->
+                <div class="viewport-badge">
+                    <div class="badge"><strong>208</strong> × <strong>231.5</strong> × <strong>59</strong> cm</div>
+                    <div class="badge"><strong>20</strong> partes</div>
+                    <div class="badge">melamine <strong>18mm</strong></div>
+                </div>
+
+                <canvas id="canvas-design"></canvas>
+            </div>
+
+            <!-- Summary sidebar -->
+            <aside class="summary-panel">
+                <div class="summary-section">
+                    <div class="section-title">Especificaciones</div>
+                    <div class="spec-grid">
+                        <div class="spec-item">
+                            <div class="spec-label">Tipo</div>
+                            <div class="spec-value sm">Closet</div>
+                        </div>
+                        <div class="spec-item">
+                            <div class="spec-label">Material</div>
+                            <div class="spec-value sm">Melamine 18</div>
+                        </div>
+                        <div class="spec-item">
+                            <div class="spec-label">Dimensiones</div>
+                            <div class="spec-value sm">208×231.5×59 <span class="spec-unit">cm</span></div>
+                        </div>
+                        <div class="spec-item">
+                            <div class="spec-label">Total partes</div>
+                            <div class="spec-value">20</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="summary-section">
+                    <div class="section-title">Desglose por rol</div>
+                    <div class="role-list">
+                        <div class="role-row"><div class="role-swatch" style="background:rgb(180,140,100)"></div><div class="role-name">Laterales</div><div class="role-count">2</div></div>
+                        <div class="role-row"><div class="role-swatch" style="background:rgb(160,130,100)"></div><div class="role-name">Piso / Tapa</div><div class="role-count">3</div></div>
+                        <div class="role-row"><div class="role-swatch" style="background:rgb(200,160,80)"></div><div class="role-name">Divisiones</div><div class="role-count">2</div></div>
+                        <div class="role-row"><div class="role-swatch" style="background:rgb(80,160,100)"></div><div class="role-name">Repisas</div><div class="role-count">4</div></div>
+                        <div class="role-row"><div class="role-swatch" style="background:rgb(160,160,160)"></div><div class="role-name">Respaldo</div><div class="role-count">3</div></div>
+                        <div class="role-row"><div class="role-swatch" style="background:rgb(80,130,200)"></div><div class="role-name">Puertas</div><div class="role-count">2</div></div>
+                        <div class="role-row"><div class="role-swatch" style="background:rgb(140,115,85)"></div><div class="role-name">Travesaños</div><div class="role-count">2</div></div>
+                        <div class="role-row"><div class="role-swatch" style="background:rgb(120,120,120)"></div><div class="role-name">Zócalo</div><div class="role-count">1</div></div>
+                        <div class="role-row"><div class="role-swatch" style="background:rgb(80,130,200)"></div><div class="role-name">Cajones</div><div class="role-count">1</div></div>
+                    </div>
+                </div>
+
+                <div class="summary-section">
+                    <div class="section-title">Hardware</div>
+                    <div class="hw-row"><span class="hw-name">Confirmats 7×50mm</span><span class="hw-qty">×28</span></div>
+                    <div class="hw-row"><span class="hw-name">Bisagras 35mm (juego)</span><span class="hw-qty">×3</span></div>
+                    <div class="hw-row"><span class="hw-name">Correderas telescópicas</span><span class="hw-qty">×1 par</span></div>
+                    <div class="hw-row"><span class="hw-name">Pernos de repisa 5mm</span><span class="hw-qty">×16</span></div>
+                    <div class="hw-row"><span class="hw-name">Canteado (total)</span><span class="hw-qty">8.4m</span></div>
+                </div>
+
+                <div class="summary-section">
+                    <div class="section-title">Notas</div>
+                    <div class="note-item"><span class="note-icon">⚠</span>2 divisiones verticales — ancho excede 85cm (max span melamine_18)</div>
+                    <div class="note-item"><span class="note-icon">📐</span>Sección izquierda: barra + 1 repisa. Centro: 4 repisas. Derecha: cajón + repisas.</div>
+                    <div class="note-item"><span class="note-icon">🔩</span>Mueble alto (>180cm): recomendar anclaje a pared</div>
+                </div>
+            </aside>
+        </div>
+
+        <!-- ======== PAGE: PARTS (exploded 3D + parts table + assembly) ======== -->
+        <div id="page-parts" class="page">
+            <div class="viewport-area" id="viewport-parts">
+                <div class="viewport-label">Vista explosionada <span class="label-tag">Exploded</span></div>
+                <canvas id="canvas-parts"></canvas>
+            </div>
+
+            <aside class="parts-sidebar">
+                <div class="parts-sidebar-scroll">
+                    <input type="text" class="parts-search" placeholder="Buscar parte...">
+                    <table class="parts-table">
+                        <thead>
+                            <tr>
+                                <th>Parte</th>
+                                <th>Rol</th>
+                                <th>Dimensiones (mm)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr data-id="side_left"><td><span class="part-role-dot" style="background:rgb(180,140,100)"></span>side_left</td><td>Lateral</td><td class="mono">590×2215×18</td></tr>
+                            <tr data-id="side_right"><td><span class="part-role-dot" style="background:rgb(180,140,100)"></span>side_right</td><td>Lateral</td><td class="mono">590×2215×18</td></tr>
+                            <tr data-id="bottom"><td><span class="part-role-dot" style="background:rgb(160,130,100)"></span>bottom</td><td>Piso</td><td class="mono">2044×590×18</td></tr>
+                            <tr data-id="top_panel"><td><span class="part-role-dot" style="background:rgb(160,130,100)"></span>top_panel</td><td>Tapa</td><td class="mono">2044×590×18</td></tr>
+                            <tr data-id="divider_1"><td><span class="part-role-dot" style="background:rgb(200,160,80)"></span>divider_1</td><td>División</td><td class="mono">590×2215×18</td></tr>
+                            <tr data-id="divider_2"><td><span class="part-role-dot" style="background:rgb(200,160,80)"></span>divider_2</td><td>División</td><td class="mono">590×2215×18</td></tr>
+                            <tr data-id="shelf_S1_1"><td><span class="part-role-dot" style="background:rgb(80,160,100)"></span>shelf_S1_1</td><td>Repisa</td><td class="mono">672×590×18</td></tr>
+                            <tr data-id="shelf_S2_1"><td><span class="part-role-dot" style="background:rgb(80,160,100)"></span>shelf_S2_1</td><td>Repisa</td><td class="mono">672×590×18</td></tr>
+                            <tr data-id="shelf_S2_2"><td><span class="part-role-dot" style="background:rgb(80,160,100)"></span>shelf_S2_2</td><td>Repisa</td><td class="mono">672×590×18</td></tr>
+                            <tr data-id="shelf_S3_1"><td><span class="part-role-dot" style="background:rgb(80,160,100)"></span>shelf_S3_1</td><td>Repisa</td><td class="mono">672×590×18</td></tr>
+                            <tr data-id="back_S1"><td><span class="part-role-dot" style="background:rgb(160,160,160)"></span>back_S1</td><td>Respaldo</td><td class="mono">690×2215×3</td></tr>
+                            <tr data-id="back_S2"><td><span class="part-role-dot" style="background:rgb(160,160,160)"></span>back_S2</td><td>Respaldo</td><td class="mono">690×2215×3</td></tr>
+                            <tr data-id="back_S3"><td><span class="part-role-dot" style="background:rgb(160,160,160)"></span>back_S3</td><td>Respaldo</td><td class="mono">690×2215×3</td></tr>
+                            <tr data-id="door_S1"><td><span class="part-role-dot" style="background:rgb(80,130,200)"></span>door_S1</td><td>Puerta</td><td class="mono">693×2215×18</td></tr>
+                            <tr data-id="door_S2"><td><span class="part-role-dot" style="background:rgb(80,130,200)"></span>door_S2</td><td>Puerta</td><td class="mono">693×2215×18</td></tr>
+                            <tr data-id="drawer_S3_front"><td><span class="part-role-dot" style="background:rgb(80,130,200)"></span>drawer_S3_front</td><td>Frente cajón</td><td class="mono">672×140×18</td></tr>
+                            <tr data-id="rail_front"><td><span class="part-role-dot" style="background:rgb(140,115,85)"></span>rail_front</td><td>Travesaño</td><td class="mono">2044×80×18</td></tr>
+                            <tr data-id="rail_back"><td><span class="part-role-dot" style="background:rgb(140,115,85)"></span>rail_back</td><td>Travesaño</td><td class="mono">2044×80×18</td></tr>
+                            <tr data-id="kickplate"><td><span class="part-role-dot" style="background:rgb(120,120,120)"></span>kickplate</td><td>Zócalo</td><td class="mono">2044×80×18</td></tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Assembly guide -->
+                    <div class="assembly-section">
+                        <div class="section-title">Guía de ensamble</div>
+                        <div class="assembly-step">
+                            <div class="step-number">1</div>
+                            <div class="step-content">
+                                <div class="step-title">Ensamblar estructura base</div>
+                                <div class="step-detail">Unir laterales con piso y tapa usando confirmats. Verificar escuadra antes de apretar.</div>
+                                <div class="step-hardware">🔩 Confirmats 7×50mm ×8</div>
+                            </div>
+                        </div>
+                        <div class="assembly-step">
+                            <div class="step-number">2</div>
+                            <div class="step-content">
+                                <div class="step-title">Instalar divisiones verticales</div>
+                                <div class="step-detail">Fijar divider_1 y divider_2 al piso y tapa. Respetar medidas desde lateral izquierdo.</div>
+                                <div class="step-hardware">🔩 Confirmats 7×50mm ×8</div>
+                            </div>
+                        </div>
+                        <div class="assembly-step">
+                            <div class="step-number">3</div>
+                            <div class="step-content">
+                                <div class="step-title">Fijar travesaños</div>
+                                <div class="step-detail">Instalar travesaño frontal (superior) y posterior entre laterales.</div>
+                                <div class="step-hardware">🔩 Confirmats 7×50mm ×4</div>
+                            </div>
+                        </div>
+                        <div class="assembly-step">
+                            <div class="step-number">4</div>
+                            <div class="step-content">
+                                <div class="step-title">Colocar respaldos</div>
+                                <div class="step-detail">Fijar paneles MDF 3mm en cada sección con clavos sin cabeza o grapas.</div>
+                                <div class="step-hardware">📌 Grapas/clavos ×24</div>
+                            </div>
+                        </div>
+                        <div class="assembly-step">
+                            <div class="step-number">5</div>
+                            <div class="step-content">
+                                <div class="step-title">Instalar repisas</div>
+                                <div class="step-detail">Colocar pernos de repisa 5mm y apoyar repisas en cada sección según diseño.</div>
+                                <div class="step-hardware">📍 Pernos 5mm ×16</div>
+                            </div>
+                        </div>
+                        <div class="assembly-step">
+                            <div class="step-number">6</div>
+                            <div class="step-content">
+                                <div class="step-title">Montar correderas y cajón</div>
+                                <div class="step-detail">Fijar correderas telescópicas en sección derecha. Armar caja del cajón y montar frente.</div>
+                                <div class="step-hardware">🔩 Tornillos 4×16mm ×8</div>
+                            </div>
+                        </div>
+                        <div class="assembly-step">
+                            <div class="step-number">7</div>
+                            <div class="step-content">
+                                <div class="step-title">Instalar puertas</div>
+                                <div class="step-detail">Montar bisagras de 35mm en puertas S1 y S2. Ajustar cierre y alineación.</div>
+                                <div class="step-hardware">🔩 Bisagras 35mm ×3 juegos</div>
+                            </div>
+                        </div>
+                        <div class="assembly-step">
+                            <div class="step-number">8</div>
+                            <div class="step-content">
+                                <div class="step-title">Fijar zócalo</div>
+                                <div class="step-detail">Atornillar zócalo frontal en la base del mueble.</div>
+                                <div class="step-hardware">🔩 Confirmats 7×50mm ×4</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+        <!-- ======== PAGE: CUTS (full width, no 3D) ======== -->
+        <div id="page-cuts" class="page">
+            <div class="cuts-header">
+                <div class="cuts-title">Optimización de cortes</div>
+                <div class="cuts-stats">
+                    <div class="cut-stat-pill">
+                        <div class="cut-stat-value">4</div>
+                        <div class="cut-stat-label">Tableros</div>
+                    </div>
+                    <div class="cut-stat-pill">
+                        <div class="cut-stat-value">31.9%</div>
+                        <div class="cut-stat-label">Desperdicio</div>
+                    </div>
+                    <div class="cut-stat-pill">
+                        <div class="cut-stat-value">16</div>
+                        <div class="cut-stat-label">Piezas</div>
+                    </div>
+                    <div class="cut-stat-pill">
+                        <div class="cut-stat-value">8.4m</div>
+                        <div class="cut-stat-label">Canteado</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sheets-list">
+
+                <!-- ═══════════ Tablero 1 ═══════════ -->
+                <div class="sheet-card">
+                    <div class="sheet-card-header">
+                        <div class="sheet-card-title">Tablero 1 — 2440 × 1220 mm</div>
+                        <div class="sheet-card-meta">
+                            <span>Melamine 18mm</span>
+                            <span><strong>4</strong> piezas</span>
+                            <span>Veta: <strong>↕ largo</strong></span>
+                        </div>
+                    </div>
+                    <div class="sheet-card-body">
+                        <div class="sheet-visual">
+                            <svg class="sheet-svg" viewBox="0 0 254 132" style="aspect-ratio: 254/132;">
+                                <rect x="0" y="0" width="254" height="132" fill="#f8f9fb" stroke="#d1d5db" stroke-width="0.5" rx="2"/>
+                                <line x1="127" y1="0" x2="127" y2="132" stroke="#e5e7eb" stroke-width="0.3" stroke-dasharray="3,3"/>
+                                <!-- side_left -->
+                                <rect x="2" y="2" width="58" height="128" rx="1" class="piece-side" stroke-width="0.6"/>
+                                <text x="31" y="62" text-anchor="middle" fill="rgb(150,110,70)" font-size="4" font-family="JetBrains Mono">side_left</text>
+                                <text x="31" y="69" text-anchor="middle" fill="rgb(170,140,100)" font-size="3" font-family="JetBrains Mono">590×2215</text>
+                                <!-- Edge banding indicators: blue lines on canteado edges -->
+                                <line x1="2" y1="2" x2="2" y2="130" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/><!-- front edge -->
+                                <!-- side_right -->
+                                <rect x="62" y="2" width="58" height="128" rx="1" class="piece-side" stroke-width="0.6"/>
+                                <text x="91" y="62" text-anchor="middle" fill="rgb(150,110,70)" font-size="4" font-family="JetBrains Mono">side_right</text>
+                                <text x="91" y="69" text-anchor="middle" fill="rgb(170,140,100)" font-size="3" font-family="JetBrains Mono">590×2215</text>
+                                <line x1="120" y1="2" x2="120" y2="130" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <!-- divider_1 -->
+                                <rect x="122" y="2" width="58" height="128" rx="1" class="piece-divider" stroke-width="0.6"/>
+                                <text x="151" y="62" text-anchor="middle" fill="rgb(160,130,50)" font-size="4" font-family="JetBrains Mono">divider_1</text>
+                                <text x="151" y="69" text-anchor="middle" fill="rgb(180,150,80)" font-size="3" font-family="JetBrains Mono">590×2215</text>
+                                <line x1="122" y1="2" x2="122" y2="130" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <!-- divider_2 -->
+                                <rect x="182" y="2" width="58" height="128" rx="1" class="piece-divider" stroke-width="0.6"/>
+                                <text x="211" y="62" text-anchor="middle" fill="rgb(160,130,50)" font-size="4" font-family="JetBrains Mono">divider_2</text>
+                                <text x="211" y="69" text-anchor="middle" fill="rgb(180,150,80)" font-size="3" font-family="JetBrains Mono">590×2215</text>
+                                <line x1="182" y1="2" x2="182" y2="130" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <!-- Grain arrow -->
+                                <text x="246" y="12" fill="#9ca3af" font-size="3.5" font-family="JetBrains Mono">↕ veta</text>
+                            </svg>
+                        </div>
+                        <div class="sheet-details">
+                            <table class="sheet-pieces-table">
+                                <thead>
+                                    <tr>
+                                        <th>Pieza</th>
+                                        <th>Dimensiones</th>
+                                        <th>Canteado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><span class="part-role-dot" style="background:rgb(180,140,100)"></span>side_left</td>
+                                        <td class="mono">590 × 2215 mm</td>
+                                        <td>
+                                            <svg width="20" height="20" viewBox="0 0 20 20" style="vertical-align:middle">
+                                                <rect x="2" y="2" width="16" height="16" fill="none" stroke="#e5e7eb" stroke-width="1" rx="1"/>
+                                                <line x1="2" y1="2" x2="2" y2="18" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
+                                            </svg>
+                                            <span style="font-size:11px;color:var(--text-dim)">frontal</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><span class="part-role-dot" style="background:rgb(180,140,100)"></span>side_right</td>
+                                        <td class="mono">590 × 2215 mm</td>
+                                        <td>
+                                            <svg width="20" height="20" viewBox="0 0 20 20" style="vertical-align:middle">
+                                                <rect x="2" y="2" width="16" height="16" fill="none" stroke="#e5e7eb" stroke-width="1" rx="1"/>
+                                                <line x1="18" y1="2" x2="18" y2="18" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
+                                            </svg>
+                                            <span style="font-size:11px;color:var(--text-dim)">frontal</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><span class="part-role-dot" style="background:rgb(200,160,80)"></span>divider_1</td>
+                                        <td class="mono">590 × 2215 mm</td>
+                                        <td>
+                                            <svg width="20" height="20" viewBox="0 0 20 20" style="vertical-align:middle">
+                                                <rect x="2" y="2" width="16" height="16" fill="none" stroke="#e5e7eb" stroke-width="1" rx="1"/>
+                                                <line x1="2" y1="2" x2="2" y2="18" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
+                                            </svg>
+                                            <span style="font-size:11px;color:var(--text-dim)">frontal</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><span class="part-role-dot" style="background:rgb(200,160,80)"></span>divider_2</td>
+                                        <td class="mono">590 × 2215 mm</td>
+                                        <td>
+                                            <svg width="20" height="20" viewBox="0 0 20 20" style="vertical-align:middle">
+                                                <rect x="2" y="2" width="16" height="16" fill="none" stroke="#e5e7eb" stroke-width="1" rx="1"/>
+                                                <line x1="2" y1="2" x2="2" y2="18" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
+                                            </svg>
+                                            <span style="font-size:11px;color:var(--text-dim)">frontal</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="sheet-usage-bar">
+                        <span class="usage-label">Uso: 87.5%</span>
+                        <div class="usage-track"><div class="usage-fill good" style="width:87.5%"></div></div>
+                        <span class="usage-label" style="color:var(--text-dim)">Desperdicio: 12.5%</span>
+                    </div>
+                </div>
+
+                <!-- ═══════════ Tablero 2 ═══════════ -->
+                <div class="sheet-card">
+                    <div class="sheet-card-header">
+                        <div class="sheet-card-title">Tablero 2 — 2440 × 1220 mm</div>
+                        <div class="sheet-card-meta">
+                            <span>Melamine 18mm</span>
+                            <span><strong>2</strong> piezas</span>
+                            <span>Veta: <strong>→ largo</strong></span>
+                        </div>
+                    </div>
+                    <div class="sheet-card-body">
+                        <div class="sheet-visual">
+                            <svg class="sheet-svg" viewBox="0 0 254 132" style="aspect-ratio: 254/132;">
+                                <rect x="0" y="0" width="254" height="132" fill="#f8f9fb" stroke="#d1d5db" stroke-width="0.5" rx="2"/>
+                                <line x1="127" y1="0" x2="127" y2="132" stroke="#e5e7eb" stroke-width="0.3" stroke-dasharray="3,3"/>
+                                <!-- bottom -->
+                                <rect x="2" y="2" width="208" height="61" rx="1" class="piece-bottom" stroke-width="0.6"/>
+                                <text x="106" y="30" text-anchor="middle" fill="rgb(130,100,70)" font-size="4" font-family="JetBrains Mono">bottom</text>
+                                <text x="106" y="37" text-anchor="middle" fill="rgb(160,130,100)" font-size="3" font-family="JetBrains Mono">2044 × 590</text>
+                                <line x1="2" y1="2" x2="210" y2="2" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/><!-- front edge -->
+                                <!-- top_panel -->
+                                <rect x="2" y="65" width="208" height="61" rx="1" class="piece-bottom" stroke-width="0.6"/>
+                                <text x="106" y="93" text-anchor="middle" fill="rgb(130,100,70)" font-size="4" font-family="JetBrains Mono">top_panel</text>
+                                <text x="106" y="100" text-anchor="middle" fill="rgb(160,130,100)" font-size="3" font-family="JetBrains Mono">2044 × 590</text>
+                                <line x1="2" y1="65" x2="210" y2="65" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <!-- Waste -->
+                                <rect x="212" y="2" width="40" height="128" rx="1" fill="none" stroke="#e5e7eb" stroke-width="0.4" stroke-dasharray="2,2"/>
+                                <text x="232" y="68" text-anchor="middle" fill="#d1d5db" font-size="3.5" font-family="JetBrains Mono" transform="rotate(-90,232,68)">desperdicio</text>
+                            </svg>
+                        </div>
+                        <div class="sheet-details">
+                            <table class="sheet-pieces-table">
+                                <thead>
+                                    <tr>
+                                        <th>Pieza</th>
+                                        <th>Dimensiones</th>
+                                        <th>Canteado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><span class="part-role-dot" style="background:rgb(160,130,100)"></span>bottom</td>
+                                        <td class="mono">2044 × 590 mm</td>
+                                        <td>
+                                            <svg width="20" height="20" viewBox="0 0 20 20" style="vertical-align:middle">
+                                                <rect x="2" y="2" width="16" height="16" fill="none" stroke="#e5e7eb" stroke-width="1" rx="1"/>
+                                                <line x1="2" y1="2" x2="18" y2="2" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
+                                            </svg>
+                                            <span style="font-size:11px;color:var(--text-dim)">frontal</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><span class="part-role-dot" style="background:rgb(160,130,100)"></span>top_panel</td>
+                                        <td class="mono">2044 × 590 mm</td>
+                                        <td>
+                                            <svg width="20" height="20" viewBox="0 0 20 20" style="vertical-align:middle">
+                                                <rect x="2" y="2" width="16" height="16" fill="none" stroke="#e5e7eb" stroke-width="1" rx="1"/>
+                                                <line x1="2" y1="2" x2="18" y2="2" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
+                                            </svg>
+                                            <span style="font-size:11px;color:var(--text-dim)">frontal</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="sheet-usage-bar">
+                        <span class="usage-label">Uso: 81.0%</span>
+                        <div class="usage-track"><div class="usage-fill good" style="width:81%"></div></div>
+                        <span class="usage-label" style="color:var(--text-dim)">Desperdicio: 19.0%</span>
+                    </div>
+                </div>
+
+                <!-- ═══════════ Tablero 3 ═══════════ -->
+                <div class="sheet-card">
+                    <div class="sheet-card-header">
+                        <div class="sheet-card-title">Tablero 3 — 2440 × 1220 mm</div>
+                        <div class="sheet-card-meta">
+                            <span>Melamine 18mm</span>
+                            <span><strong>6</strong> piezas</span>
+                            <span>Veta: <strong>→ largo</strong></span>
+                        </div>
+                    </div>
+                    <div class="sheet-card-body">
+                        <div class="sheet-visual">
+                            <svg class="sheet-svg" viewBox="0 0 254 132" style="aspect-ratio: 254/132;">
+                                <rect x="0" y="0" width="254" height="132" fill="#f8f9fb" stroke="#d1d5db" stroke-width="0.5" rx="2"/>
+                                <!-- Row 1: shelves -->
+                                <rect x="2" y="2" width="69" height="61" rx="1" class="piece-shelf" stroke-width="0.6"/>
+                                <text x="36" y="30" text-anchor="middle" fill="rgb(50,130,70)" font-size="3.5" font-family="JetBrains Mono">shelf_S1_1</text>
+                                <text x="36" y="37" text-anchor="middle" fill="rgb(80,150,90)" font-size="3" font-family="JetBrains Mono">672×590</text>
+                                <line x1="2" y1="2" x2="71" y2="2" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <rect x="73" y="2" width="69" height="61" rx="1" class="piece-shelf" stroke-width="0.6"/>
+                                <text x="107" y="30" text-anchor="middle" fill="rgb(50,130,70)" font-size="3.5" font-family="JetBrains Mono">shelf_S2_1</text>
+                                <text x="107" y="37" text-anchor="middle" fill="rgb(80,150,90)" font-size="3" font-family="JetBrains Mono">672×590</text>
+                                <line x1="73" y1="2" x2="142" y2="2" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <rect x="144" y="2" width="69" height="61" rx="1" class="piece-shelf" stroke-width="0.6"/>
+                                <text x="178" y="30" text-anchor="middle" fill="rgb(50,130,70)" font-size="3.5" font-family="JetBrains Mono">shelf_S2_2</text>
+                                <text x="178" y="37" text-anchor="middle" fill="rgb(80,150,90)" font-size="3" font-family="JetBrains Mono">672×590</text>
+                                <line x1="144" y1="2" x2="213" y2="2" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <!-- Row 2 -->
+                                <rect x="2" y="65" width="69" height="61" rx="1" class="piece-shelf" stroke-width="0.6"/>
+                                <text x="36" y="93" text-anchor="middle" fill="rgb(50,130,70)" font-size="3.5" font-family="JetBrains Mono">shelf_S3_1</text>
+                                <text x="36" y="100" text-anchor="middle" fill="rgb(80,150,90)" font-size="3" font-family="JetBrains Mono">672×590</text>
+                                <line x1="2" y1="65" x2="71" y2="65" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <!-- rails + kickplate -->
+                                <rect x="73" y="65" width="69" height="10" rx="1" class="piece-rail" stroke-width="0.6"/>
+                                <text x="107" y="72" text-anchor="middle" fill="rgb(110,90,65)" font-size="3" font-family="JetBrains Mono">rail_front 2044×80</text>
+                                <rect x="73" y="77" width="69" height="10" rx="1" class="piece-rail" stroke-width="0.6"/>
+                                <text x="107" y="84" text-anchor="middle" fill="rgb(110,90,65)" font-size="3" font-family="JetBrains Mono">rail_back 2044×80</text>
+                                <!-- Waste area -->
+                                <rect x="215" y="2" width="37" height="128" rx="1" fill="none" stroke="#e5e7eb" stroke-width="0.4" stroke-dasharray="2,2"/>
+                                <rect x="73" y="89" width="140" height="37" rx="1" fill="none" stroke="#e5e7eb" stroke-width="0.4" stroke-dasharray="2,2"/>
+                            </svg>
+                        </div>
+                        <div class="sheet-details">
+                            <table class="sheet-pieces-table">
+                                <thead>
+                                    <tr>
+                                        <th>Pieza</th>
+                                        <th>Dimensiones</th>
+                                        <th>Canteado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><span class="part-role-dot" style="background:rgb(80,160,100)"></span>shelf_S1_1</td>
+                                        <td class="mono">672 × 590 mm</td>
+                                        <td>
+                                            <svg width="20" height="20" viewBox="0 0 20 20" style="vertical-align:middle">
+                                                <rect x="2" y="2" width="16" height="16" fill="none" stroke="#e5e7eb" stroke-width="1" rx="1"/>
+                                                <line x1="2" y1="2" x2="18" y2="2" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
+                                            </svg>
+                                            <span style="font-size:11px;color:var(--text-dim)">frontal</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><span class="part-role-dot" style="background:rgb(80,160,100)"></span>shelf_S2_1</td>
+                                        <td class="mono">672 × 590 mm</td>
+                                        <td>
+                                            <svg width="20" height="20" viewBox="0 0 20 20" style="vertical-align:middle">
+                                                <rect x="2" y="2" width="16" height="16" fill="none" stroke="#e5e7eb" stroke-width="1" rx="1"/>
+                                                <line x1="2" y1="2" x2="18" y2="2" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
+                                            </svg>
+                                            <span style="font-size:11px;color:var(--text-dim)">frontal</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><span class="part-role-dot" style="background:rgb(80,160,100)"></span>shelf_S2_2</td>
+                                        <td class="mono">672 × 590 mm</td>
+                                        <td>
+                                            <svg width="20" height="20" viewBox="0 0 20 20" style="vertical-align:middle">
+                                                <rect x="2" y="2" width="16" height="16" fill="none" stroke="#e5e7eb" stroke-width="1" rx="1"/>
+                                                <line x1="2" y1="2" x2="18" y2="2" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
+                                            </svg>
+                                            <span style="font-size:11px;color:var(--text-dim)">frontal</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><span class="part-role-dot" style="background:rgb(80,160,100)"></span>shelf_S3_1</td>
+                                        <td class="mono">672 × 590 mm</td>
+                                        <td>
+                                            <svg width="20" height="20" viewBox="0 0 20 20" style="vertical-align:middle">
+                                                <rect x="2" y="2" width="16" height="16" fill="none" stroke="#e5e7eb" stroke-width="1" rx="1"/>
+                                                <line x1="2" y1="2" x2="18" y2="2" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
+                                            </svg>
+                                            <span style="font-size:11px;color:var(--text-dim)">frontal</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><span class="part-role-dot" style="background:rgb(140,115,85)"></span>rail_front</td>
+                                        <td class="mono">2044 × 80 mm</td>
+                                        <td>
+                                            <svg width="20" height="20" viewBox="0 0 20 20" style="vertical-align:middle">
+                                                <rect x="2" y="2" width="16" height="16" fill="none" stroke="#e5e7eb" stroke-width="1" rx="1"/>
+                                            </svg>
+                                            <span style="font-size:11px;color:var(--text-muted)">—</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><span class="part-role-dot" style="background:rgb(140,115,85)"></span>rail_back</td>
+                                        <td class="mono">2044 × 80 mm</td>
+                                        <td>
+                                            <svg width="20" height="20" viewBox="0 0 20 20" style="vertical-align:middle">
+                                                <rect x="2" y="2" width="16" height="16" fill="none" stroke="#e5e7eb" stroke-width="1" rx="1"/>
+                                            </svg>
+                                            <span style="font-size:11px;color:var(--text-muted)">—</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="sheet-usage-bar">
+                        <span class="usage-label">Uso: 60.2%</span>
+                        <div class="usage-track"><div class="usage-fill ok" style="width:60.2%"></div></div>
+                        <span class="usage-label" style="color:var(--text-dim)">Desperdicio: 39.8%</span>
+                    </div>
+                </div>
+
+                <!-- ═══════════ Tablero 4 ═══════════ -->
+                <div class="sheet-card">
+                    <div class="sheet-card-header">
+                        <div class="sheet-card-title">Tablero 4 — 2440 × 1220 mm</div>
+                        <div class="sheet-card-meta">
+                            <span>Melamine 18mm</span>
+                            <span><strong>4</strong> piezas</span>
+                            <span>Veta: <strong>↕ largo</strong></span>
+                        </div>
+                    </div>
+                    <div class="sheet-card-body">
+                        <div class="sheet-visual">
+                            <svg class="sheet-svg" viewBox="0 0 254 132" style="aspect-ratio: 254/132;">
+                                <rect x="0" y="0" width="254" height="132" fill="#f8f9fb" stroke="#d1d5db" stroke-width="0.5" rx="2"/>
+                                <!-- door_S1 -->
+                                <rect x="2" y="2" width="71" height="128" rx="1" class="piece-door" stroke-width="0.6"/>
+                                <text x="37" y="62" text-anchor="middle" fill="rgb(50,100,170)" font-size="4" font-family="JetBrains Mono">door_S1</text>
+                                <text x="37" y="69" text-anchor="middle" fill="rgb(80,120,180)" font-size="3" font-family="JetBrains Mono">693×2215</text>
+                                <!-- 4 edges canteado -->
+                                <line x1="2" y1="2" x2="73" y2="2" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <line x1="2" y1="130" x2="73" y2="130" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <line x1="2" y1="2" x2="2" y2="130" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <line x1="73" y1="2" x2="73" y2="130" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <!-- door_S2 -->
+                                <rect x="75" y="2" width="71" height="128" rx="1" class="piece-door" stroke-width="0.6"/>
+                                <text x="110" y="62" text-anchor="middle" fill="rgb(50,100,170)" font-size="4" font-family="JetBrains Mono">door_S2</text>
+                                <text x="110" y="69" text-anchor="middle" fill="rgb(80,120,180)" font-size="3" font-family="JetBrains Mono">693×2215</text>
+                                <line x1="75" y1="2" x2="146" y2="2" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <line x1="75" y1="130" x2="146" y2="130" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <line x1="75" y1="2" x2="75" y2="130" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <line x1="146" y1="2" x2="146" y2="130" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <!-- drawer_front -->
+                                <rect x="148" y="2" width="69" height="16" rx="1" class="piece-drawer" stroke-width="0.6"/>
+                                <text x="182" y="12" text-anchor="middle" fill="rgb(50,100,170)" font-size="3" font-family="JetBrains Mono">drawer_front 672×140</text>
+                                <line x1="148" y1="2" x2="217" y2="2" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <line x1="148" y1="18" x2="217" y2="18" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <line x1="148" y1="2" x2="148" y2="18" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <line x1="217" y1="2" x2="217" y2="18" stroke="#2563eb" stroke-width="1.5" opacity="0.7"/>
+                                <!-- kickplate -->
+                                <rect x="148" y="20" width="69" height="10" rx="1" class="piece-kickplate" stroke-width="0.6"/>
+                                <text x="182" y="27" text-anchor="middle" fill="rgb(100,100,100)" font-size="3" font-family="JetBrains Mono">kickplate 2044×80</text>
+                                <!-- Waste -->
+                                <rect x="148" y="32" width="104" height="98" rx="1" fill="none" stroke="#e5e7eb" stroke-width="0.4" stroke-dasharray="2,2"/>
+                                <text x="200" y="80" text-anchor="middle" fill="#d1d5db" font-size="4" font-family="JetBrains Mono">desperdicio</text>
+                            </svg>
+                        </div>
+                        <div class="sheet-details">
+                            <table class="sheet-pieces-table">
+                                <thead>
+                                    <tr>
+                                        <th>Pieza</th>
+                                        <th>Dimensiones</th>
+                                        <th>Canteado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><span class="part-role-dot" style="background:rgb(80,130,200)"></span>door_S1</td>
+                                        <td class="mono">693 × 2215 mm</td>
+                                        <td>
+                                            <svg width="20" height="20" viewBox="0 0 20 20" style="vertical-align:middle">
+                                                <rect x="2" y="2" width="16" height="16" fill="none" stroke="#2563eb" stroke-width="2" rx="1"/>
+                                            </svg>
+                                            <span style="font-size:11px;color:var(--text-dim)">4 lados</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><span class="part-role-dot" style="background:rgb(80,130,200)"></span>door_S2</td>
+                                        <td class="mono">693 × 2215 mm</td>
+                                        <td>
+                                            <svg width="20" height="20" viewBox="0 0 20 20" style="vertical-align:middle">
+                                                <rect x="2" y="2" width="16" height="16" fill="none" stroke="#2563eb" stroke-width="2" rx="1"/>
+                                            </svg>
+                                            <span style="font-size:11px;color:var(--text-dim)">4 lados</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><span class="part-role-dot" style="background:rgb(80,130,200)"></span>drawer_S3_front</td>
+                                        <td class="mono">672 × 140 mm</td>
+                                        <td>
+                                            <svg width="20" height="20" viewBox="0 0 20 20" style="vertical-align:middle">
+                                                <rect x="2" y="2" width="16" height="16" fill="none" stroke="#2563eb" stroke-width="2" rx="1"/>
+                                            </svg>
+                                            <span style="font-size:11px;color:var(--text-dim)">4 lados</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><span class="part-role-dot" style="background:rgb(120,120,120)"></span>kickplate</td>
+                                        <td class="mono">2044 × 80 mm</td>
+                                        <td>
+                                            <svg width="20" height="20" viewBox="0 0 20 20" style="vertical-align:middle">
+                                                <rect x="2" y="2" width="16" height="16" fill="none" stroke="#e5e7eb" stroke-width="1" rx="1"/>
+                                                <line x1="2" y1="2" x2="18" y2="2" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
+                                            </svg>
+                                            <span style="font-size:11px;color:var(--text-dim)">frontal</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="sheet-usage-bar">
+                        <span class="usage-label">Uso: 52.3%</span>
+                        <div class="usage-track"><div class="usage-fill bad" style="width:52.3%"></div></div>
+                        <span class="usage-label" style="color:var(--text-dim)">Desperdicio: 47.7%</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Legend -->
+            <div class="cuts-legend">
+                <div class="legend-item"><div class="legend-swatch" style="background:rgb(180,140,100)"></div>Laterales</div>
+                <div class="legend-item"><div class="legend-swatch" style="background:rgb(160,130,100)"></div>Piso/Tapa</div>
+                <div class="legend-item"><div class="legend-swatch" style="background:rgb(200,160,80)"></div>Divisiones</div>
+                <div class="legend-item"><div class="legend-swatch" style="background:rgb(80,160,100)"></div>Repisas</div>
+                <div class="legend-item"><div class="legend-swatch" style="background:rgb(80,130,200)"></div>Puertas/Cajones</div>
+                <div class="legend-item"><div class="legend-swatch" style="background:rgb(140,115,85)"></div>Travesaños</div>
+            </div>
+            <div class="edge-legend">
+                <div class="edge-legend-item"><div class="edge-legend-line active"></div>Con canteado</div>
+                <div class="edge-legend-item"><div class="edge-legend-line inactive"></div>Sin canteado</div>
+            </div>
+        </div>
+
+        <!-- ======== PAGE: HISTORY ======== -->
+        <div id="page-history" class="page">
+            <div class="history-title">Historial de iteraciones</div>
+            <div class="timeline">
+                <div class="history-item">
+                    <div class="history-header">
+                        <span class="history-name">v1</span>
+                        <span class="history-time">2026-03-26 14:20</span>
+                    </div>
+                    <div class="history-comment">Diseño inicial: closet 208×231.5×59cm en melamina 18mm. 3 secciones con barra, repisas y cajón.</div>
+                    <div class="history-stats">16 partes · melamine_18</div>
+                </div>
+                <div class="history-item">
+                    <div class="history-header">
+                        <span class="history-name">v2</span>
+                        <span class="history-time">2026-03-26 14:35</span>
+                    </div>
+                    <div class="history-comment">Agregadas 2 repisas extra en sección centro.</div>
+                    <div class="history-changes">
+                        <span class="change-badge added">+2 repisas</span>
+                    </div>
+                    <div class="history-stats">18 partes · melamine_18</div>
+                </div>
+                <div class="history-item active">
+                    <div class="history-header">
+                        <span class="history-name">v3</span>
+                        <span class="history-time">2026-03-26 15:10</span>
+                    </div>
+                    <div class="history-comment">Sección derecha: agregado cajón con caja completa y correderas. Puertas en secciones izquierda y centro.</div>
+                    <div class="history-changes">
+                        <span class="change-badge added">+1 cajón</span>
+                        <span class="change-badge added">+2 puertas</span>
+                        <span class="change-badge modified">hardware actualizado</span>
+                    </div>
+                    <div class="history-stats">20 partes · 6 tableros · 31.9% desperdicio</div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /main-content -->
+</div>
+
+<!-- Tooltip -->
+<div id="tooltip">
+    <div class="tt-title">Repisa — shelf_S2_1</div>
+    <div class="tt-row"><span class="tt-label">Dimensiones</span><span class="tt-value">672 × 590 × 18 mm</span></div>
+    <div class="tt-row"><span class="tt-label">Sección</span><span class="tt-value">S2 · Centro</span></div>
+    <div class="tt-row"><span class="tt-label">Posición</span><span class="tt-value">(726, 0, 800)</span></div>
+    <div class="tt-row"><span class="tt-label">Canteado</span><span class="tt-value">front</span></div>
+</div>
+
+<!-- ============================================================
+     JAVASCRIPT
+     ============================================================ -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.169.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// ============================================================
+// Navigation
+// ============================================================
+const navBtns = document.querySelectorAll('.nav-btn');
+const pages = document.querySelectorAll('.page');
+let activeScene = null;
+
+navBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        navBtns.forEach(b => b.classList.remove('active'));
+        pages.forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        const page = document.getElementById('page-' + btn.dataset.page);
+        page.classList.add('active');
+        // Resize canvases on page switch
+        setTimeout(() => {
+            if (btn.dataset.page === 'design') resizeDesign();
+            if (btn.dataset.page === 'parts') resizeParts();
+        }, 10);
+    });
+});
+
+// ============================================================
+// Shared: colors and parts data
+// ============================================================
+const COLORS = {
+    side: [0.71, 0.55, 0.39],
+    bottom: [0.63, 0.51, 0.39],
+    top_panel: [0.63, 0.51, 0.39],
+    shelf: [0.31, 0.63, 0.39],
+    back: [0.63, 0.63, 0.63],
+    door: [0.31, 0.51, 0.78],
+    rail: [0.55, 0.45, 0.33],
+    kickplate: [0.47, 0.47, 0.47],
+    divider: [0.78, 0.63, 0.31],
+    drawer_front: [0.31, 0.51, 0.78],
+};
+
+const EDGE_COLOR = 0x94a3b8; // subtle gray edges for light theme
+
+const mockParts = [
+    { id:'side_left', role:'side', w:18,d:590,h:2215, x:0,y:0,z:100 },
+    { id:'side_right', role:'side', w:18,d:590,h:2215, x:2062,y:0,z:100 },
+    { id:'bottom', role:'bottom', w:2044,d:590,h:18, x:18,y:0,z:100 },
+    { id:'top_panel', role:'top_panel', w:2044,d:590,h:18, x:18,y:0,z:2297 },
+    { id:'divider_1', role:'divider', w:18,d:590,h:2197, x:708,y:0,z:118 },
+    { id:'divider_2', role:'divider', w:18,d:590,h:2197, x:1380,y:0,z:118 },
+    { id:'shelf_S1_1', role:'shelf', w:672,d:590,h:18, x:18,y:0,z:1200 },
+    { id:'shelf_S2_1', role:'shelf', w:654,d:590,h:18, x:726,y:0,z:700 },
+    { id:'shelf_S2_2', role:'shelf', w:654,d:590,h:18, x:726,y:0,z:1200 },
+    { id:'shelf_S2_3', role:'shelf', w:654,d:590,h:18, x:726,y:0,z:1700 },
+    { id:'shelf_S3_1', role:'shelf', w:664,d:590,h:18, x:1398,y:0,z:1200 },
+    { id:'back_S1', role:'back', w:690,d:3,h:2197, x:18,y:587,z:118 },
+    { id:'back_S2', role:'back', w:654,d:3,h:2197, x:726,y:587,z:118 },
+    { id:'back_S3', role:'back', w:664,d:3,h:2197, x:1398,y:587,z:118 },
+    { id:'kickplate', role:'kickplate', w:2044,d:18,h:100, x:18,y:0,z:0 },
+    { id:'rail_front', role:'rail', w:2044,d:18,h:80, x:18,y:0,z:2215 },
+    { id:'door_S1', role:'door', w:693,d:18,h:2180, x:18,y:-5,z:118 },
+    { id:'door_S2', role:'door', w:693,d:18,h:2180, x:726,y:-5,z:118 },
+    { id:'drawer_S3_front', role:'drawer_front', w:664,d:18,h:140, x:1398,y:-5,z:118 },
+];
+
+// ============================================================
+// Build scene helper
+// ============================================================
+function buildScene(canvasId, containerId, exploded = false) {
+    const container = document.getElementById(containerId);
+    const canvas = document.getElementById(canvasId);
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setClearColor(0xf0f2f5);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(35, 1, 1, 50000);
+    const controls = new THREE.OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.rotateSpeed = 0.5;
+
+    // Lights
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dLight = new THREE.DirectionalLight(0xffffff, 0.6);
+    dLight.position.set(1, 1.5, 1);
+    scene.add(dLight);
+    const bLight = new THREE.DirectionalLight(0xddeeff, 0.2);
+    bLight.position.set(-1, 0.5, -1);
+    scene.add(bLight);
+
+    // Subtle grid
+    const grid = new THREE.GridHelper(3000, 30, 0xdee2e6, 0xeceff2);
+    grid.material.transparent = true;
+    grid.material.opacity = 0.5;
+    scene.add(grid);
+
+    // Build furniture
+    const group = new THREE.Group();
+    const meshes = [];
+
+    // Explosion offsets by role
+    const explosionOffset = {
+        side: { x: 0, y: 0, z: 0 },
+        bottom: { x: 0, y: -120, z: 0 },
+        top_panel: { x: 0, y: 120, z: 0 },
+        divider: { x: 0, y: 60, z: 0 },
+        shelf: { x: 0, y: 40, z: 0 },
+        back: { x: 0, y: 0, z: 200 },
+        door: { x: 0, y: 0, z: -250 },
+        rail: { x: 0, y: 100, z: 0 },
+        kickplate: { x: 0, y: -180, z: 0 },
+        drawer_front: { x: 0, y: 0, z: -300 },
+    };
+
+    mockParts.forEach(part => {
+        const geom = new THREE.BoxGeometry(part.w, part.h, part.d);
+        const rgb = COLORS[part.role] || [0.7, 0.6, 0.5];
+        const mat = new THREE.MeshPhysicalMaterial({
+            color: new THREE.Color(rgb[0], rgb[1], rgb[2]),
+            transparent: true,
+            opacity: 0.7,
+            roughness: 0.5,
+            metalness: 0.02,
+        });
+        const mesh = new THREE.Mesh(geom, mat);
+
+        // Edge lines
+        const edges = new THREE.EdgesGeometry(geom);
+        const lineMat = new THREE.LineBasicMaterial({
+            color: EDGE_COLOR,
+            transparent: true,
+            opacity: 0.35,
+        });
+        mesh.add(new THREE.LineSegments(edges, lineMat));
+
+        // Position
+        let px = part.x + part.w / 2;
+        let py = part.z + part.h / 2;
+        let pz = part.y + part.d / 2;
+
+        if (exploded) {
+            const off = explosionOffset[part.role] || { x:0, y:0, z:0 };
+            px += off.x;
+            py += off.y;
+            pz += off.z;
+        }
+
+        mesh.position.set(px, py, pz);
+        mesh.userData = part;
+        group.add(mesh);
+        meshes.push(mesh);
+    });
+
+    scene.add(group);
+
+    // Camera
+    const box = new THREE.Box3().setFromObject(group);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    controls.target.copy(center);
+    camera.position.set(center.x + maxDim * 0.8, center.y + maxDim * 0.5, center.z + maxDim * 1.0);
+
+    // Click interaction
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let selected = null;
+
+    canvas.addEventListener('click', e => {
+        const rect = canvas.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+        const hits = raycaster.intersectObjects(meshes);
+
+        if (selected) {
+            selected.material.emissive.setHex(0x000000);
+            selected.material.opacity = 0.7;
+            selected.children[0].material.color.setHex(EDGE_COLOR);
+            selected.children[0].material.opacity = 0.35;
+        }
+
+        const tooltip = document.getElementById('tooltip');
+        if (hits.length > 0) {
+            selected = hits[0].object;
+            selected.material.emissive.setHex(0x111111);
+            selected.material.opacity = 0.9;
+            selected.children[0].material.color.setHex(0x2563eb);
+            selected.children[0].material.opacity = 0.6;
+
+            tooltip.style.display = 'block';
+            tooltip.style.left = Math.min(e.clientX + 16, window.innerWidth - 300) + 'px';
+            tooltip.style.top = Math.min(e.clientY + 16, window.innerHeight - 140) + 'px';
+
+            // Update tooltip content
+            const p = selected.userData;
+            tooltip.querySelector('.tt-title').textContent = p.id;
+            tooltip.querySelectorAll('.tt-value')[0].textContent = `${p.w} × ${p.d} × ${p.h} mm`;
+        } else {
+            selected = null;
+            tooltip.style.display = 'none';
+        }
+    });
+
+    canvas.addEventListener('mousemove', () => {
+        document.getElementById('tooltip').style.display = 'none';
+    });
+
+    // Resize function
+    function resize() {
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        if (w === 0 || h === 0) return;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+    }
+
+    // Animate
+    function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    return { resize };
+}
+
+// ============================================================
+// Init scenes
+// ============================================================
+const designScene = buildScene('canvas-design', 'viewport-design', false);
+const partsScene = buildScene('canvas-parts', 'viewport-parts', true);
+
+function resizeDesign() { designScene.resize(); }
+function resizeParts() { partsScene.resize(); }
+
+window.addEventListener('resize', () => {
+    resizeDesign();
+    resizeParts();
+});
+
+// Initial resize
+resizeDesign();
+
+// ============================================================
+// Parts search filter
+// ============================================================
+document.querySelector('.parts-search').addEventListener('input', e => {
+    const q = e.target.value.toLowerCase();
+    document.querySelectorAll('.parts-table tbody tr').forEach(row => {
+        row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+});
+
+// ============================================================
+// Iteration slider
+// ============================================================
+document.getElementById('iter-slider').addEventListener('input', e => {
+    document.getElementById('iter-label').textContent = 'v' + (parseInt(e.target.value) + 1);
+});
+</script>
+</body>
+</html>

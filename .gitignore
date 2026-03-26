@@ -6,3 +6,7 @@ build/
 .venv/
 .env
 *.lock
+
+# Generated reports (user-specific output)
+design_report.html
+test_designs/

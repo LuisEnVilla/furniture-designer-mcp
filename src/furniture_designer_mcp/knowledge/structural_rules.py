@@ -57,11 +57,12 @@ STRUCTURAL_RULES: list[dict] = [
         "rule": "Gabinetes de piso deben tener zócalo o patas",
         "severity": "warning",
         "description": (
-            "El zócalo protege la base del mueble de golpes y humedad del piso. "
-            "Debe estar retranqueado 3-5cm del frente para que los pies no "
-            "choquen al pararse frente al mueble."
+            "El zócalo es un marco rectangular (frente, fondo, 2 retornos laterales) "
+            "que soporta todo el peso del mueble. El frente se retranquea 3-5cm "
+            "para que los pies no choquen al pararse frente al mueble. "
+            "Los laterales del mueble se apoyan encima de este marco."
         ),
-        "fix": "Agregar zócalo de 10cm retranqueado 5cm, o patas ajustables.",
+        "fix": "Agregar zócalo como marco completo (4 piezas) de 10cm retranqueado 5cm, o patas ajustables.",
         "check": "if floor_standing: spec should have kickplate or legs",
     },
     {

@@ -12,11 +12,13 @@ VALID_ROLES: set[str] = {
     "door",
     "rail",
     "kickplate",
+    "kickplate_return",
     "divider",
     "drawer_front",
     "drawer_side",
     "drawer_back",
     "drawer_bottom",
+    "back_rail",
 }
 
 REQUIRED_PART_FIELDS: set[str] = {
