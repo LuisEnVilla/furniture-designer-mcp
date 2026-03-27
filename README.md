@@ -1,10 +1,20 @@
+<div align="center">
+
 # furniture-designer-mcp
 
-> **v0.1.3** — Servidor MCP para diseño profesional de muebles
+**Servidor MCP para diseño profesional de muebles**
+
+[![PyPI](https://img.shields.io/pypi/v/furniture-designer-mcp?label=PyPI&color=blue)](https://pypi.org/project/furniture-designer-mcp/)
+[![License](https://img.shields.io/github/license/LuisEnVilla/furniture-designer-mcp)](LICENSE)
+[![MCP](https://img.shields.io/badge/MCP-Protocol-orange)](https://modelcontextprotocol.io/)
+[![Python](https://img.shields.io/badge/Python-3.12+-green)](https://python.org)
+[![GitHub Release](https://img.shields.io/github/v/release/LuisEnVilla/furniture-designer-mcp)](https://github.com/LuisEnVilla/furniture-designer-mcp/releases)
 
 <!-- mcp-name: io.github.LuisEnVilla/furniture-designer-mcp -->
 
-Servidor [Model Context Protocol](https://modelcontextprotocol.io/) que convierte dimensiones y tipo de mueble en un paquete completo listo para fabricación: especificación técnica, validación estructural, optimización de cortes, lista de materiales, instrucciones de ensamble, reporte HTML interactivo con viewer 3D, y exportación opcional a FreeCAD.
+Convierte dimensiones y tipo de mueble en un paquete completo listo para fabricacion: especificacion tecnica, validacion estructural, optimizacion de cortes, BOM, instrucciones de ensamble, reporte HTML interactivo con viewer 3D, y exportacion opcional a FreeCAD.
+
+</div>
 
 <img width="1200" alt="reporte" src="https://github.com/user-attachments/assets/8218cef2-4624-49e2-856d-f965600ee53e" />
 
