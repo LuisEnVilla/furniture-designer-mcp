@@ -79,6 +79,22 @@ uv sync
 uv run furniture-designer-mcp
 ```
 
+### Uso con Claude Code (Plugin)
+
+El [**furniture-designer-plugin**](https://github.com/LuisEnVilla/furniture-designer-plugin) agrega un asistente conversacional de 4 fases que guia al usuario desde la idea hasta el paquete de fabricacion:
+
+```bash
+# Instalar el plugin (incluye el servidor MCP automaticamente)
+claude plugin add https://github.com/LuisEnVilla/furniture-designer-plugin
+
+# Iniciar un diseno
+> /furniture disena un closet de 120x240x60
+```
+
+El plugin maneja el flujo completo: pregunta tipo, dimensiones, material y funcionalidad, luego genera el spec, valida, optimiza cortes y produce el reporte HTML — todo conversacionalmente.
+
+> Ver documentacion completa del plugin: [furniture-designer-plugin](https://github.com/LuisEnVilla/furniture-designer-plugin)
+
 ## Funcionalidades principales
 
 ### Reporte HTML interactivo
