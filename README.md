@@ -10,6 +10,8 @@
 [![Python](https://img.shields.io/badge/Python-3.12+-green)](https://python.org)
 [![GitHub Release](https://img.shields.io/github/v/release/LuisEnVilla/furniture-designer-mcp)](https://github.com/LuisEnVilla/furniture-designer-mcp/releases)
 
+[![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJ3aGl0ZSI+PHBhdGggZD0iTTEyIDJDNi40OCAyIDIgNi40OCAyIDEyczQuNDggMTAgMTAgMTAgMTAtNC40OCAxMC0xMFMxNy41MiAyIDEyIDJ6bTAgMThjLTQuNDIgMC04LTMuNTgtOC04czMuNTgtOCA4LTggOCAzLjU4IDggOC0zLjU4IDgtOCA4eiIvPjwvc3ZnPg==)](https://github.com/LuisEnVilla/furniture-designer-plugin)
+
 <!-- mcp-name: io.github.LuisEnVilla/furniture-designer-mcp -->
 
 Convierte dimensiones y tipo de mueble en un paquete completo listo para fabricacion: especificacion tecnica, validacion estructural, optimizacion de cortes, BOM, instrucciones de ensamble, reporte HTML interactivo con viewer 3D, y exportacion opcional a FreeCAD.
