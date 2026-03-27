@@ -1,6 +1,8 @@
 # furniture-designer-mcp
 
-> **v0.1.1** — Servidor MCP para diseño profesional de muebles
+> **v0.1.2** — Servidor MCP para diseño profesional de muebles
+
+<!-- mcp-name: io.github.luisenvilla/furniture-designer-mcp -->
 
 Servidor [Model Context Protocol](https://modelcontextprotocol.io/) que convierte dimensiones y tipo de mueble en un paquete completo listo para fabricación: especificación técnica, validación estructural, optimización de cortes, lista de materiales, instrucciones de ensamble, reporte HTML interactivo con viewer 3D, y exportación opcional a FreeCAD.
 

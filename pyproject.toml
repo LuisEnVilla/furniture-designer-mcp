@@ -1,6 +1,6 @@
 [project]
 name = "furniture-designer-mcp"
-version = "0.1.1"
+version = "0.1.2"
 description = "MCP Server for professional furniture design — structural validation, cut optimization, BOM generation, and ergonomic standards."
 readme = "README.md"
 license = { text = "MIT" }
