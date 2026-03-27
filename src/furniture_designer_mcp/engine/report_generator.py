@@ -1081,6 +1081,152 @@ code, .mono {
     font-size: 12px;
     font-weight: 500;
 }
+
+/* ============================================================
+   MEASURE TOOL
+   ============================================================ */
+.measure-toolbar {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: flex;
+    gap: 6px;
+    z-index: 10;
+}
+.measure-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(8px);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+    box-shadow: var(--shadow-sm);
+}
+.measure-btn:hover {
+    background: var(--bg-white);
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+}
+.measure-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+}
+.measure-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.measure-hint {
+    position: absolute;
+    top: 50px;
+    right: 12px;
+    padding: 8px 14px;
+    border-radius: 6px;
+    background: rgba(0,0,0,0.75);
+    backdrop-filter: blur(8px);
+    color: white;
+    font-size: 12px;
+    font-weight: 500;
+    z-index: 10;
+    pointer-events: none;
+    transition: opacity 0.2s;
+}
+.measure-result {
+    position: absolute;
+    top: 50px;
+    right: 12px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-md);
+    z-index: 10;
+    font-family: 'JetBrains Mono', monospace;
+}
+.measure-result .mr-value {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--accent);
+    line-height: 1.2;
+}
+.measure-result .mr-alt {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+.measure-result .mr-detail {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
+}
+
+/* ============================================================
+   DIMENSION DIAGRAM (2D IKEA-style)
+   ============================================================ */
+.dim-overlay {
+    position: absolute;
+    inset: 0;
+    background: #ffffff;
+    z-index: 5;
+    display: none;
+    overflow: auto;
+    align-items: center;
+    justify-content: center;
+}
+.dim-overlay.active { display: flex; }
+.dim-overlay svg { max-width: 100%; max-height: 100%; }
+
+/* SVG dimension styles */
+.dim-panel { fill: #f3e8d0; stroke: #8b7355; stroke-width: 1.5; }
+.dim-panel-back { fill: #e8e8e8; stroke: #aaa; stroke-width: 1; stroke-dasharray: 4,3; }
+.dim-panel-kick { fill: #d5d5d5; stroke: #999; stroke-width: 1.2; }
+.dim-ext { stroke: #9ca3af; stroke-width: 0.8; }
+.dim-line { stroke: #2563eb; stroke-width: 1.2; }
+.dim-arrow { fill: #2563eb; }
+.dim-text {
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    fill: #1e3a5f;
+    text-anchor: middle;
+    dominant-baseline: auto;
+}
+.dim-text-unit {
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 400;
+    fill: #6b7280;
+    text-anchor: middle;
+    dominant-baseline: auto;
+}
+.dim-text-ext {
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 700;
+    fill: #111827;
+    text-anchor: middle;
+    dominant-baseline: auto;
+}
+.dim-label-bg { fill: white; opacity: 0.85; }
+.dim-depth-box {
+    fill: #f0f4ff;
+    stroke: #2563eb;
+    stroke-width: 1;
+    rx: 6;
+}
 </style>
 </head>
 <body>
@@ -1119,6 +1265,22 @@ code, .mono {
             <div class="viewport-area" id="viewport-design">
                 <div class="section-labels-container" id="section-labels"></div>
                 <div class="viewport-badge" id="design-badges"></div>
+                <div class="measure-toolbar">
+                    <button class="measure-btn" id="btn-dim2d" title="Diagrama de dimensiones internas">
+                        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="1" stroke-width="1.5"/><line x1="3" y1="14" x2="21" y2="14"/><line x1="12" y1="3" x2="12" y2="14"/><path d="M5 18h2m2 0h2m2 0h2m2 0h2" stroke-width="1"/></svg>
+                        Dimensiones
+                    </button>
+                    <button class="measure-btn" id="btn-measure" title="Herramienta de medici&#243;n">
+                        <svg viewBox="0 0 24 24"><path d="M2 12h4m2 0h1m2 0h1m2 0h1m2 0h1m2 0h4"/><path d="M6 8v8M18 8v8"/><path d="M2 12v-2M2 12v2M22 12v-2M22 12v2"/></svg>
+                        Medir
+                    </button>
+                    <button class="measure-btn" id="btn-measure-clear" title="Limpiar mediciones" style="display:none">
+                        <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <div class="dim-overlay" id="dim-overlay"></div>
+                <div class="measure-hint" id="measure-hint" style="opacity:0">Haz click en dos superficies para medir</div>
+                <div class="measure-result" id="measure-result" style="display:none"></div>
                 <canvas id="canvas-design"></canvas>
             </div>
             <aside class="summary-panel" id="summary-panel"></aside>
@@ -1290,6 +1452,11 @@ function buildScene(canvasId, containerId, exploded) {
     var mouse = new THREE.Vector2();
     var gridHelper = null;
 
+    // Measure mode state
+    var measureMode = false;
+    var measurePoints = [];  // [{point, normal, partId}]
+    var measureObjects = []; // THREE objects for cleanup
+
     function buildFromParts(parts) {
         // Clear previous
         if (group) scene.remove(group);
@@ -1361,7 +1528,7 @@ function buildScene(canvasId, containerId, exploded) {
         camera.position.set(
             center.x + maxDim * 0.8,
             center.y + maxDim * 0.5,
-            center.z + maxDim * 1.0
+            center.z - maxDim * 1.0
         );
         controls.update();
 
@@ -1374,8 +1541,153 @@ function buildScene(canvasId, containerId, exploded) {
         scene.add(gridHelper);
     }
 
+    // -- Measure helpers --
+    function createMeasureMarker(point, color) {
+        var geo = new THREE.SphereGeometry(6, 16, 16);
+        var mat = new THREE.MeshBasicMaterial({ color: color });
+        var sphere = new THREE.Mesh(geo, mat);
+        sphere.position.copy(point);
+        scene.add(sphere);
+        measureObjects.push(sphere);
+        return sphere;
+    }
+
+    function createMeasureLine(p1, p2) {
+        // Main dimension line
+        var lineGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+        var lineMat = new THREE.LineBasicMaterial({ color: 0x2563eb, linewidth: 2 });
+        var line = new THREE.Line(lineGeo, lineMat);
+        scene.add(line);
+        measureObjects.push(line);
+
+        // Dashed overlay for visibility
+        var dashMat = new THREE.LineDashedMaterial({
+            color: 0x2563eb, dashSize: 8, gapSize: 4, linewidth: 1
+        });
+        var dashLine = new THREE.Line(lineGeo.clone(), dashMat);
+        dashLine.computeLineDistances();
+        scene.add(dashLine);
+        measureObjects.push(dashLine);
+    }
+
+    function createMeasureLabel(midpoint, distMm) {
+        var cvs = document.createElement('canvas');
+        var ctx = cvs.getContext('2d');
+        cvs.width = 256;
+        cvs.height = 80;
+
+        // Background
+        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        ctx.beginPath();
+        ctx.roundRect(0, 0, 256, 80, 8);
+        ctx.fill();
+        ctx.strokeStyle = '#2563eb';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Text
+        ctx.fillStyle = '#2563eb';
+        ctx.font = 'bold 28px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(Math.round(distMm) + ' mm', 128, 34);
+        ctx.fillStyle = '#4b5563';
+        ctx.font = '20px sans-serif';
+        ctx.fillText((distMm / 10).toFixed(1) + ' cm', 128, 62);
+
+        var texture = new THREE.CanvasTexture(cvs);
+        texture.minFilter = THREE.LinearFilter;
+        var spriteMat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+        var sprite = new THREE.Sprite(spriteMat);
+
+        // Scale based on furniture size
+        var box = new THREE.Box3().setFromObject(group);
+        var furnitureSize = box.getSize(new THREE.Vector3());
+        var maxDim = Math.max(furnitureSize.x, furnitureSize.y, furnitureSize.z);
+        var labelScale = maxDim * 0.15;
+        sprite.scale.set(labelScale, labelScale * 80 / 256, 1);
+
+        sprite.position.copy(midpoint);
+        // Offset slightly towards camera for visibility
+        var camDir = new THREE.Vector3().subVectors(camera.position, midpoint).normalize();
+        sprite.position.add(camDir.multiplyScalar(30));
+
+        scene.add(sprite);
+        measureObjects.push(sprite);
+    }
+
+    function clearMeasure() {
+        measureObjects.forEach(function(obj) { scene.remove(obj); });
+        measureObjects = [];
+        measurePoints = [];
+        var resultEl = document.getElementById('measure-result');
+        if (resultEl) resultEl.style.display = 'none';
+    }
+
+    function handleMeasureClick(e) {
+        var rect = canvas.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+        var hits = raycaster.intersectObjects(meshes);
+        if (hits.length === 0) return;
+
+        var hit = hits[0];
+        var point = hit.point.clone();
+        var normal = hit.face.normal.clone();
+        var partId = hit.object.userData.partId;
+
+        if (measurePoints.length >= 2) {
+            clearMeasure();
+        }
+
+        measurePoints.push({ point: point, normal: normal, partId: partId });
+        createMeasureMarker(point, measurePoints.length === 1 ? 0x2563eb : 0x059669);
+
+        var hintEl = document.getElementById('measure-hint');
+        if (measurePoints.length === 1) {
+            if (hintEl) hintEl.textContent = 'Click en la segunda superficie';
+        }
+
+        if (measurePoints.length === 2) {
+            var p1 = measurePoints[0].point;
+            var p2 = measurePoints[1].point;
+            var dist = p1.distanceTo(p2);
+            var mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+
+            createMeasureLine(p1, p2);
+            createMeasureLabel(mid, dist);
+
+            // Component distances (in furniture space: X=width, Y=height/Z-three, Z=depth/Y-three)
+            var dx = Math.abs(p2.x - p1.x);
+            var dy = Math.abs(p2.y - p1.y); // This is height in Three.js
+            var dz = Math.abs(p2.z - p1.z); // This is depth in Three.js
+
+            var resultEl = document.getElementById('measure-result');
+            if (resultEl) {
+                resultEl.innerHTML =
+                    '<div class="mr-value">' + Math.round(dist) + ' mm</div>' +
+                    '<div class="mr-alt">' + (dist / 10).toFixed(1) + ' cm</div>' +
+                    '<div class="mr-detail">' +
+                    '\u0394X ' + Math.round(dx) + ' \u00b7 \u0394Y ' + Math.round(dy) + ' \u00b7 \u0394Z ' + Math.round(dz) + ' mm<br>' +
+                    measurePoints[0].partId + ' \u2192 ' + measurePoints[1].partId +
+                    '</div>';
+                resultEl.style.display = 'block';
+            }
+
+            if (hintEl) hintEl.textContent = 'Click para nueva medici\u00f3n';
+
+            var clearBtn = document.getElementById('btn-measure-clear');
+            if (clearBtn) clearBtn.style.display = '';
+        }
+    }
+
     // Click interaction
     canvas.addEventListener('click', function(e) {
+        if (measureMode) {
+            handleMeasureClick(e);
+            return;
+        }
+
         var rect = canvas.getBoundingClientRect();
         mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
         mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -1425,7 +1737,7 @@ function buildScene(canvasId, containerId, exploded) {
     });
 
     canvas.addEventListener('mousemove', function() {
-        document.getElementById('tooltip').style.display = 'none';
+        if (!measureMode) document.getElementById('tooltip').style.display = 'none';
     });
 
     // Resize
@@ -1451,6 +1763,13 @@ function buildScene(canvasId, containerId, exploded) {
         buildFromParts: buildFromParts,
         getMeshes: function() { return meshes; },
         getControls: function() { return controls; },
+        setMeasureMode: function(on) {
+            measureMode = on;
+            canvas.style.cursor = on ? 'crosshair' : '';
+            if (!on) clearMeasure();
+        },
+        clearMeasure: clearMeasure,
+        isMeasureMode: function() { return measureMode; },
     };
 }
 
@@ -1459,6 +1778,311 @@ function buildScene(canvasId, containerId, exploded) {
 // ============================================================
 var designScene = buildScene('canvas-design', 'viewport-design', false);
 var partsScene = buildScene('canvas-parts', 'viewport-parts', true);
+
+// ============================================================
+// Measure tool buttons
+// ============================================================
+(function() {
+    var btnMeasure = document.getElementById('btn-measure');
+    var btnClear = document.getElementById('btn-measure-clear');
+    var hint = document.getElementById('measure-hint');
+
+    btnMeasure.addEventListener('click', function() {
+        var isActive = designScene.isMeasureMode();
+        designScene.setMeasureMode(!isActive);
+        btnMeasure.classList.toggle('active', !isActive);
+        hint.style.opacity = !isActive ? '1' : '0';
+        hint.textContent = 'Haz click en dos superficies para medir';
+        if (isActive) {
+            btnClear.style.display = 'none';
+            document.getElementById('measure-result').style.display = 'none';
+        }
+    });
+
+    btnClear.addEventListener('click', function() {
+        designScene.clearMeasure();
+        btnClear.style.display = 'none';
+        hint.textContent = 'Haz click en dos superficies para medir';
+        hint.style.opacity = '1';
+    });
+})();
+
+// ============================================================
+// 2D Dimension Diagram
+// ============================================================
+function renderDimensionDiagram(parts, dimsMm) {
+    var furW = dimsMm.width || 0;
+    var furH = dimsMm.height || 0;
+    var furD = dimsMm.depth || 0;
+
+    // Front-view rectangles for structural panels
+    var rects = [];
+    parts.forEach(function(p) {
+        var pos = p.position_mm || {x:0,y:0,z:0};
+        var r = p.role;
+        var rect = null;
+        if (r === 'side' || r === 'divider') {
+            rect = {x: pos.x, z: pos.z, w: p.thickness_mm, h: p.height_mm, role: r, id: p.id};
+        } else if (['bottom','top_panel','shelf','floor'].indexOf(r) >= 0) {
+            rect = {x: pos.x, z: pos.z, w: p.width_mm, h: p.thickness_mm, role: r, id: p.id};
+        } else if (r === 'kickplate') {
+            rect = {x: pos.x, z: pos.z, w: p.width_mm, h: p.height_mm, role: r, id: p.id};
+        } else if (r === 'back') {
+            rect = {x: pos.x, z: pos.z, w: p.width_mm, h: p.height_mm, role: r, id: p.id, isBack: true};
+        }
+        if (rect) rects.push(rect);
+    });
+
+    if (!furW) rects.forEach(function(r) { furW = Math.max(furW, r.x + r.w); });
+    if (!furH) rects.forEach(function(r) { furH = Math.max(furH, r.z + r.h); });
+
+    // Text sizing relative to furniture
+    var maxDim = Math.max(furW, furH);
+    var fontSize = Math.max(18, Math.min(28, maxDim * 0.018));
+    var fontSizeSmall = fontSize * 0.75;
+    var fontSizeExt = fontSize * 1.1;
+    var arrowSize = fontSize * 0.35;
+    var dimOffset = maxDim * 0.06;   // offset for external dimension lines
+    var extGap = maxDim * 0.015;     // gap before extension line starts
+    var pad = maxDim * 0.14;         // SVG padding for external dimensions
+
+    // Coordinate transforms: front view (mirror X for viewer perspective, flip Y)
+    function sx(x) { return furW - x; }  // mirror X: front view sees left/right swapped
+    function sy(z) { return furH - z; }
+
+    // SVG dimension line helpers
+    function hDimLine(x1, x2, yPos, offset, valueMm, cls) {
+        cls = cls || 'dim-text';
+        var ly = yPos + offset;
+        var mid = (x1 + x2) / 2;
+        var cm = (valueMm / 10).toFixed(1);
+        var s = '';
+        // Extension lines
+        var ey1 = yPos + extGap * Math.sign(offset);
+        s += '<line x1="'+x1+'" y1="'+ey1+'" x2="'+x1+'" y2="'+ly+'" class="dim-ext"/>';
+        s += '<line x1="'+x2+'" y1="'+ey1+'" x2="'+x2+'" y2="'+ly+'" class="dim-ext"/>';
+        // Dimension line
+        s += '<line x1="'+x1+'" y1="'+ly+'" x2="'+x2+'" y2="'+ly+'" class="dim-line"/>';
+        // Arrows
+        s += '<polygon points="'+x1+','+ly+' '+(x1+arrowSize)+','+(ly-arrowSize/2)+' '+(x1+arrowSize)+','+(ly+arrowSize/2)+'" class="dim-arrow"/>';
+        s += '<polygon points="'+x2+','+ly+' '+(x2-arrowSize)+','+(ly-arrowSize/2)+' '+(x2-arrowSize)+','+(ly+arrowSize/2)+'" class="dim-arrow"/>';
+        // Label background + text
+        var cmVal = (valueMm / 10).toFixed(1);
+        var label = cmVal + ' cm';
+        var tw = label.length * fontSize * 0.5 + fontSize * 1.2;
+        s += '<rect x="'+(mid - tw/2)+'" y="'+(ly - fontSize*0.9)+'" width="'+tw+'" height="'+(fontSize*1.3)+'" class="dim-label-bg" rx="3"/>';
+        s += '<text x="'+mid+'" y="'+(ly - fontSize*0.15)+'" class="'+cls+'" font-size="'+fontSize+'">' + label + '</text>';
+        return s;
+    }
+
+    function vDimLine(yTop, yBot, xPos, offset, valueMm, cls) {
+        cls = cls || 'dim-text';
+        var lx = xPos + offset;
+        var mid = (yTop + yBot) / 2;
+        var cmVal = (valueMm / 10).toFixed(1);
+        var label = cmVal + ' cm';
+        var s = '';
+        // Extension lines
+        var ex1 = xPos + extGap * Math.sign(offset);
+        s += '<line x1="'+ex1+'" y1="'+yTop+'" x2="'+lx+'" y2="'+yTop+'" class="dim-ext"/>';
+        s += '<line x1="'+ex1+'" y1="'+yBot+'" x2="'+lx+'" y2="'+yBot+'" class="dim-ext"/>';
+        // Dimension line
+        s += '<line x1="'+lx+'" y1="'+yTop+'" x2="'+lx+'" y2="'+yBot+'" class="dim-line"/>';
+        // Arrows
+        s += '<polygon points="'+lx+','+yTop+' '+(lx-arrowSize/2)+','+(yTop+arrowSize)+' '+(lx+arrowSize/2)+','+(yTop+arrowSize)+'" class="dim-arrow"/>';
+        s += '<polygon points="'+lx+','+yBot+' '+(lx-arrowSize/2)+','+(yBot-arrowSize)+' '+(lx+arrowSize/2)+','+(yBot-arrowSize)+'" class="dim-arrow"/>';
+        // Label - rotated text
+        var tw = label.length * fontSize * 0.5 + fontSize * 1.2;
+        s += '<rect x="'+(lx - fontSize*0.9)+'" y="'+(mid - tw/2)+'" width="'+(fontSize*1.3)+'" height="'+tw+'" class="dim-label-bg" rx="3"/>';
+        s += '<text transform="translate('+lx+','+mid+') rotate(-90)" class="'+cls+'" font-size="'+fontSize+'" dy="'+fontSize*0.3+'">' + label + '</text>';
+        return s;
+    }
+
+    // Internal dimension: simple centered text with short lines (no extension lines)
+    function hDimInternal(x1, x2, yCenter, valueMm) {
+        var mid = (x1 + x2) / 2;
+        var gap = x2 - x1;
+        var cmVal = (valueMm / 10).toFixed(1);
+        var label = cmVal + ' cm';
+        var s = '';
+        s += '<line x1="'+x1+'" y1="'+yCenter+'" x2="'+x2+'" y2="'+yCenter+'" class="dim-line" opacity="0.4"/>';
+        s += '<polygon points="'+x1+','+yCenter+' '+(x1+arrowSize)+','+(yCenter-arrowSize/2)+' '+(x1+arrowSize)+','+(yCenter+arrowSize/2)+'" class="dim-arrow" opacity="0.6"/>';
+        s += '<polygon points="'+x2+','+yCenter+' '+(x2-arrowSize)+','+(yCenter-arrowSize/2)+' '+(x2-arrowSize)+','+(yCenter+arrowSize/2)+'" class="dim-arrow" opacity="0.6"/>';
+        if (gap > fontSize * 4) {
+            var tw = label.length * fontSizeSmall * 0.5 + fontSizeSmall * 1.2;
+            s += '<rect x="'+(mid-tw/2)+'" y="'+(yCenter-fontSizeSmall*0.9)+'" width="'+tw+'" height="'+(fontSizeSmall*1.4)+'" class="dim-label-bg" rx="2"/>';
+            s += '<text x="'+mid+'" y="'+(yCenter+fontSizeSmall*0.15)+'" class="dim-text" font-size="'+fontSizeSmall+'">' + label + '</text>';
+        }
+        return s;
+    }
+
+    function vDimInternal(yTop, yBot, xCenter, valueMm) {
+        var mid = (yTop + yBot) / 2;
+        var gap = yBot - yTop;
+        var cmVal = (valueMm / 10).toFixed(1);
+        var label = cmVal + ' cm';
+        var s = '';
+        s += '<line x1="'+xCenter+'" y1="'+yTop+'" x2="'+xCenter+'" y2="'+yBot+'" class="dim-line" opacity="0.4"/>';
+        s += '<polygon points="'+xCenter+','+yTop+' '+(xCenter-arrowSize/2)+','+(yTop+arrowSize)+' '+(xCenter+arrowSize/2)+','+(yTop+arrowSize)+'" class="dim-arrow" opacity="0.6"/>';
+        s += '<polygon points="'+xCenter+','+yBot+' '+(xCenter-arrowSize/2)+','+(yBot-arrowSize)+' '+(xCenter+arrowSize/2)+','+(yBot-arrowSize)+'" class="dim-arrow" opacity="0.6"/>';
+        if (gap > fontSize * 3) {
+            var tw = label.length * fontSizeSmall * 0.5 + fontSizeSmall * 1.2;
+            s += '<rect x="'+(xCenter-tw/2)+'" y="'+(mid-fontSizeSmall*0.5)+'" width="'+tw+'" height="'+(fontSizeSmall*1.4)+'" class="dim-label-bg" rx="2"/>';
+            s += '<text x="'+xCenter+'" y="'+(mid+fontSizeSmall*0.3)+'" class="dim-text" font-size="'+fontSizeSmall+'">' + label + '</text>';
+        }
+        return s;
+    }
+
+    // ---- Calculate usable spaces ----
+    // Vertical boundaries (sides, dividers)
+    var vertBounds = [];
+    parts.forEach(function(p) {
+        if (p.role === 'side' || p.role === 'divider') {
+            var pos = p.position_mm || {x:0,y:0,z:0};
+            vertBounds.push({left: pos.x, right: pos.x + p.thickness_mm, id: p.id, z: pos.z, h: p.height_mm});
+        }
+    });
+    vertBounds.sort(function(a,b) { return a.left - b.left; });
+
+    // Width gaps between vertical panels
+    var columns = [];
+    for (var i = 0; i < vertBounds.length - 1; i++) {
+        var gapL = vertBounds[i].right;
+        var gapR = vertBounds[i+1].left;
+        if (gapR - gapL > 2) {
+            columns.push({left: gapL, right: gapR, width: gapR - gapL});
+        }
+    }
+
+    // For each column, find horizontal panels and height gaps
+    columns.forEach(function(col) {
+        var hPanels = [];
+        parts.forEach(function(p) {
+            if (['bottom','top_panel','shelf','floor'].indexOf(p.role) < 0) return;
+            var pos = p.position_mm || {x:0,y:0,z:0};
+            var pL = pos.x;
+            var pR = pos.x + p.width_mm;
+            if (pL <= col.left + 2 && pR >= col.right - 2) {
+                hPanels.push({bottom: pos.z, top: pos.z + p.thickness_mm, id: p.id, role: p.role});
+            }
+        });
+        hPanels.sort(function(a,b) { return a.bottom - b.bottom; });
+
+        var heightGaps = [];
+        for (var j = 0; j < hPanels.length - 1; j++) {
+            var gB = hPanels[j].top;
+            var gT = hPanels[j+1].bottom;
+            if (gT - gB > 2) {
+                heightGaps.push({bottom: gB, top: gT, height: gT - gB});
+            }
+        }
+        col.heightGaps = heightGaps;
+    });
+
+    // Back panel thickness for depth calc
+    var backT = 0;
+    parts.forEach(function(p) { if (p.role === 'back') backT = Math.max(backT, p.thickness_mm); });
+    var usableDepth = furD - backT;
+
+    // ---- Build SVG ----
+    var vbX = -pad;
+    var vbY = -pad;
+    var vbW = furW + pad * 2.5;
+    var vbH = furH + pad * 2;
+
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + vbX + ' ' + vbY + ' ' + vbW + ' ' + vbH + '" style="width:100%;height:100%;">';
+
+    // Draw panels (back first, then structural) — mirrored X for front view
+    rects.forEach(function(r) {
+        if (!r.isBack) return;
+        var rx = sx(r.x + r.w), ry = sy(r.z + r.h), rw = r.w, rh = r.h;
+        svg += '<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" class="dim-panel-back"/>';
+    });
+    rects.forEach(function(r) {
+        if (r.isBack) return;
+        var rx = sx(r.x + r.w), ry = sy(r.z + r.h), rw = r.w, rh = r.h;
+        var cls = r.role === 'kickplate' ? 'dim-panel-kick' : 'dim-panel';
+        svg += '<rect x="'+rx+'" y="'+ry+'" width="'+rw+'" height="'+rh+'" class="'+cls+'"/>';
+    });
+
+    // ---- External dimensions ----
+    // Overall width (top)
+    svg += hDimLine(0, furW, sy(furH), -dimOffset, furW, 'dim-text-ext');
+    // Overall height (right)
+    svg += vDimLine(sy(furH), sy(0), furW, dimOffset, furH, 'dim-text-ext');
+
+    // ---- Internal width dimensions (mirrored X) ----
+    var widthDimY = sy(furH * 0.5);
+    columns.forEach(function(col) {
+        if (col.heightGaps.length > 0) {
+            var tallest = col.heightGaps.reduce(function(a, b) { return a.height > b.height ? a : b; });
+            widthDimY = sy((tallest.bottom + tallest.top) / 2);
+        }
+    });
+
+    columns.forEach(function(col) {
+        svg += hDimInternal(sx(col.right), sx(col.left), widthDimY, col.width);
+    });
+
+    // ---- Internal height dimensions (mirrored X) ----
+    columns.forEach(function(col, ci) {
+        var xCenter = sx((col.left + col.right) / 2);
+        var xOff = xCenter + (ci % 2 === 0 ? 0 : fontSize * 2);
+
+        col.heightGaps.forEach(function(gap) {
+            var svgTop = sy(gap.top);
+            var svgBot = sy(gap.bottom);
+            svg += vDimInternal(svgTop, svgBot, xOff, gap.height);
+        });
+    });
+
+    // ---- Depth annotation box ----
+    if (furD > 0) {
+        var boxW = pad * 1.5;
+        var boxH = fontSize * 4;
+        var boxX = furW + dimOffset * 1.8;
+        var boxY = sy(furH * 0.3);
+        svg += '<rect x="'+boxX+'" y="'+boxY+'" width="'+boxW+'" height="'+boxH+'" class="dim-depth-box"/>';
+        svg += '<text x="'+(boxX + boxW/2)+'" y="'+(boxY + fontSize*1.2)+'" class="dim-text-unit" font-size="'+fontSizeSmall+'">Profundidad</text>';
+        svg += '<text x="'+(boxX + boxW/2)+'" y="'+(boxY + fontSize*2.3)+'" class="dim-text-ext" font-size="'+fontSize+'">' + (furD / 10).toFixed(1) + ' cm</text>';
+        if (usableDepth !== furD) {
+            svg += '<text x="'+(boxX + boxW/2)+'" y="'+(boxY + fontSize*3.3)+'" class="dim-text-unit" font-size="'+fontSizeSmall+'">Util: ' + (usableDepth / 10).toFixed(1) + ' cm</text>';
+        }
+    }
+
+    svg += '</svg>';
+    return svg;
+}
+
+// Toggle 2D diagram
+(function() {
+    var btn = document.getElementById('btn-dim2d');
+    var overlay = document.getElementById('dim-overlay');
+    var dimActive = false;
+
+    btn.addEventListener('click', function() {
+        dimActive = !dimActive;
+        btn.classList.toggle('active', dimActive);
+
+        if (dimActive) {
+            var iter = iterations[currentIdx];
+            var spec = iter.spec;
+            var mm = spec.dimensions_mm || {};
+            // Fallback from cm if mm not available
+            if (!mm.width && spec.dimensions_cm) {
+                mm = {
+                    width: spec.dimensions_cm.width * 10,
+                    height: spec.dimensions_cm.height * 10,
+                    depth: spec.dimensions_cm.depth * 10
+                };
+            }
+            overlay.innerHTML = renderDimensionDiagram(spec.parts || [], mm);
+            overlay.classList.add('active');
+        } else {
+            overlay.classList.remove('active');
+        }
+    });
+})();
 
 // ============================================================
 // Navigation

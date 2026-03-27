@@ -2,6 +2,15 @@
 
 Todos los cambios notables de este proyecto se documentan en este archivo.
 
+## [0.1.1] — 2026-03-26
+
+### Reporte HTML — Nuevas herramientas de visualizacion
+
+- **Herramienta de medicion 3D**: boton "Medir" en el viewer — click en dos superficies de paneles para obtener la distancia exacta (mm/cm) con linea de acotado, desglose por ejes y nombres de las partes medidas. Zero tokens adicionales (100% client-side)
+- **Diagrama 2D de dimensiones internas**: boton "Dimensiones" que muestra un diagrama tipo IKEA con vista frontal del mueble, acotado de espacios usables (ancho y alto de cada compartimiento), dimensiones externas totales y profundidad util. Unidades en cm
+- **Correccion de orientacion de camara**: la vista 3D ahora abre desde el frente del mueble (donde van puertas/cajones) en lugar de desde atras
+- **Vista frontal correcta en diagrama 2D**: espejo del eje X para que el diagrama coincida con la perspectiva natural del usuario mirando el mueble de frente
+
 ## [0.1.0] — 2026-03-26
 
 Primera versión pública del servidor MCP para diseño de muebles.

@@ -1,6 +1,6 @@
 # furniture-designer-mcp
 
-> **v0.1.0** — Servidor MCP para diseño profesional de muebles
+> **v0.1.1** — Servidor MCP para diseño profesional de muebles
 
 Servidor [Model Context Protocol](https://modelcontextprotocol.io/) que convierte dimensiones y tipo de mueble en un paquete completo listo para fabricación: especificación técnica, validación estructural, optimización de cortes, lista de materiales, instrucciones de ensamble, reporte HTML interactivo con viewer 3D, y exportación opcional a FreeCAD.
 
@@ -70,7 +70,7 @@ uv run furniture-designer-mcp
 
 El entregable principal es un reporte HTML servido en `http://localhost:8432/{design_id}` con:
 
-- **Pagina Diseno** — Viewer 3D (Three.js) del mueble ensamblado + ficha tecnica con specs, roles, hardware y notas
+- **Pagina Diseno** — Viewer 3D (Three.js) del mueble ensamblado + ficha tecnica con specs, roles, hardware y notas. Incluye herramienta de medicion interactiva y diagrama 2D de dimensiones internas (tipo IKEA)
 - **Pagina Partes** — Vista 3D explosionada + tabla de partes con dimensiones y canteado + guia de ensamble
 - **Pagina Cortes** — Layout SVG por tablero con piezas coloreadas por rol, canteado visual, barra de uso (verde/amarillo/rojo)
 - **Pagina Historial** — Timeline vertical de iteraciones con badges de cambios
