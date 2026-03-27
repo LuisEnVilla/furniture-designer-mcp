@@ -4,7 +4,8 @@
 
 Servidor [Model Context Protocol](https://modelcontextprotocol.io/) que convierte dimensiones y tipo de mueble en un paquete completo listo para fabricación: especificación técnica, validación estructural, optimización de cortes, lista de materiales, instrucciones de ensamble, reporte HTML interactivo con viewer 3D, y exportación opcional a FreeCAD.
 
-<!-- ![Reporte HTML interactivo — vista Diseño](docs/screenshots/report-design-page.png) -->
+<img width="1200" alt="reporte" src="https://github.com/user-attachments/assets/8218cef2-4624-49e2-856d-f965600ee53e" />
+
 
 ## Flujo general
 
@@ -75,13 +76,12 @@ El entregable principal es un reporte HTML servido en `http://localhost:8432/{de
 - **Pagina Cortes** — Layout SVG por tablero con piezas coloreadas por rol, canteado visual, barra de uso (verde/amarillo/rojo)
 - **Pagina Historial** — Timeline vertical de iteraciones con badges de cambios
 
-<!-- ![Pagina Diseno — 3D ensamblado + ficha tecnica](docs/screenshots/report-design-3d.png) -->
+<img width="1200" alt="Pagina Diseno" src="https://github.com/user-attachments/assets/127ca291-bd01-45a6-a9e2-fcacc2d5d2cf" />
 
-<!-- ![Pagina Partes — vista explosionada + tabla](docs/screenshots/report-parts-exploded.png) -->
+<img width="1200" alt="Pagina Partes — vista explosionada" src="https://github.com/user-attachments/assets/580771cc-f25a-424d-b62b-d7c3a88c9ae5" />
 
-<!-- ![Pagina Cortes — layout SVG por tablero](docs/screenshots/report-cuts-layout.png) -->
+<img width="1200" alt="Pagina Historial — timeline de iteraciones" src="https://github.com/user-attachments/assets/0762242f-80b8-457b-a5c3-fc70323fbb62" />
 
-<!-- ![Pagina Historial — timeline de iteraciones](docs/screenshots/report-history-timeline.png) -->
 
 ### Multi-diseno con persistencia
 
