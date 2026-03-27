@@ -1,18 +1,18 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.luisenvilla/furniture-designer-mcp",
+  "name": "io.github.LuisEnVilla/furniture-designer-mcp",
   "title": "Furniture Designer",
-  "description": "Professional furniture design server. Converts dimensions and furniture type into a complete fabrication-ready package: technical specs, structural validation, cut optimization, BOM, assembly instructions, and interactive HTML report with 3D viewer.",
+  "description": "Professional furniture design: specs, validation, cut optimization, BOM, and 3D reports.",
   "repository": {
     "url": "https://github.com/LuisEnVilla/furniture-designer-mcp",
     "source": "github"
   },
-  "version": "0.1.2",
+  "version": "0.1.3",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "furniture-designer-mcp",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "transport": {
         "type": "stdio"
       }
